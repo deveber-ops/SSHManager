@@ -787,32 +787,80 @@ function getContent() { return editor.innerHTML.trim(); }
 """
 
 private func openHTMLEditor(initialHTML: String, completion: @escaping (String) -> Void) {
-    let editor = EditorWindowController(initialHTML: initialHTML, completion: completion)
+    // Записываем HTML-шаблон во временный файл (нужно для работы JS в WKWebView)
+    let tmpDir = FileManager.default.temporaryDirectory
+    let htmlFile = tmpDir.appendingPathComponent("sparkle_editor.html")
+    try? htmlEditorTemplate.write(to: htmlFile, atomically: true, encoding: .utf8)
+
+    let editor = EditorWindowController(initialHTML: initialHTML, htmlFileURL: htmlFile, completion: completion)
     editor.showWindow(nil)
 }
 
 private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private let initialHTML: String
+    private let htmlFileURL: URL
     private let completion: (String) -> Void
     private var window: NSWindow?
     private var webView: WKWebView?
+    private var tabView: NSTabView?
 
-    init(initialHTML: String, completion: @escaping (String) -> Void) {
+    init(initialHTML: String, htmlFileURL: URL, completion: @escaping (String) -> Void) {
         self.initialHTML = initialHTML
+        self.htmlFileURL = htmlFileURL
         self.completion = completion
         super.init()
     }
 
     func showWindow(_ sender: Any?) {
+        // Вкладки: Редактор | Предпросмотр (HTML) | Предпросмотр (Текст)
+        let tabView = NSTabView()
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        self.tabView = tabView
+
+        // Вкладка 1: Редактор
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "contentChanged")
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.setValue(false, forKey: "drawsBackground")
         wv.navigationDelegate = self
         wv.translatesAutoresizingMaskIntoConstraints = false
-        wv.loadHTMLString(htmlEditorTemplate, baseURL: nil)
+        wv.loadFileURL(htmlFileURL, allowingReadAccessTo: htmlFileURL.deletingLastPathComponent())
         self.webView = wv
 
+        let editorTab = NSTabViewItem(identifier: "editor")
+        editorTab.label = "Редактор"
+        editorTab.view = wv
+        tabView.addTabViewItem(editorTab)
+
+        // Вкладка 2: Предпросмотр HTML
+        let previewWV = WKWebView(frame: .zero)
+        previewWV.setValue(false, forKey: "drawsBackground")
+        previewWV.translatesAutoresizingMaskIntoConstraints = false
+        previewWV.isHidden = true
+        let previewTab = NSTabViewItem(identifier: "preview")
+        previewTab.label = "HTML"
+        previewTab.view = previewWV
+        tabView.addTabViewItem(previewTab)
+
+        // Вкладка 3: Предпросмотр текста
+        let textPreview = NSTextView(frame: .zero)
+        textPreview.isEditable = false
+        textPreview.font = NSFont.systemFont(ofSize: 13)
+        textPreview.translatesAutoresizingMaskIntoConstraints = false
+        textPreview.backgroundColor = NSColor.white
+        let textScroll = NSScrollView()
+        textScroll.documentView = textPreview
+        textScroll.hasVerticalScroller = true
+        textScroll.translatesAutoresizingMaskIntoConstraints = false
+        let textTab = NSTabViewItem(identifier: "text")
+        textTab.label = "Текст"
+        textTab.view = textScroll
+        tabView.addTabViewItem(textTab)
+
+        // Сохраняем ссылки для обновления предпросмотра
+        tabView.delegate = self
+
+        // Кнопки
         let btnCancel = NSButton(title: "Отмена", target: self, action: #selector(cancel))
         btnCancel.keyEquivalent = "\u{1b}"
         let btnDone = NSButton(title: "Готово", target: self, action: #selector(done))
@@ -826,20 +874,20 @@ private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMe
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
         let contentView = NSView()
-        contentView.addSubview(wv)
+        contentView.addSubview(tabView)
         contentView.addSubview(bottomBar)
         NSLayoutConstraint.activate([
-            wv.topAnchor.constraint(equalTo: contentView.topAnchor),
-            wv.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            wv.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            wv.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            tabView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            tabView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            tabView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
             bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 40)
         ])
 
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 500), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 520), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         win.title = "Редактор описания обновления"
         win.contentView = contentView
         win.center()
@@ -859,14 +907,45 @@ private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMe
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let escaped = initialHTML
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "$", with: "\\$")
-        webView.evaluateJavaScript("setContent(`\(escaped)`)")
+        if webView == self.webView {
+            let escaped = initialHTML
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "`", with: "\\`")
+                .replacingOccurrences(of: "$", with: "\\$")
+            webView.evaluateJavaScript("setContent(`\(escaped)`)")
+        }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        // No-op: content tracking if needed
+        // Обновляем предпросмотр при изменении контента
+        if let html = message.body as? String {
+            updatePreviews(html: html)
+        }
+    }
+
+    private func updatePreviews(html: String) {
+        guard let tabView = tabView else { return }
+        // HTML preview
+        if let previewWV = (tabView.tabViewItem(at: 1)?.view as? WKWebView) {
+            let styled = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px;color:#1d1d1d;}h3{font-size:15px;margin:0 0 4px;}ul{padding-left:24px;}li{margin:2px 0;}</style></head><body>\(html)</body></html>"
+            previewWV.loadHTMLString(styled, baseURL: nil)
+        }
+        // Text preview
+        if let textScroll = (tabView.tabViewItem(at: 2)?.view as? NSScrollView),
+           let textView = textScroll.documentView as? NSTextView {
+            textView.string = htmlToText(html)
+        }
+    }
+}
+
+extension EditorWindowController: NSTabViewDelegate {
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        if let id = tabViewItem?.identifier as? String, id == "preview" || id == "text" {
+            webView?.evaluateJavaScript("getContent()") { [weak self] result, _ in
+                if let html = result as? String {
+                    self?.updatePreviews(html: html)
+                }
+            }
+        }
     }
 }
