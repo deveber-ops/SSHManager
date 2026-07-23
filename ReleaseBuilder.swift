@@ -543,6 +543,53 @@ class ReleaseVM: ObservableObject {
 
 // MARK: - Native Editor NSViewRepresentable
 
+// MARK: - Liquid Glass Modifier (from main app)
+
+// MARK: - Hover Background Modifier (from main app)
+
+struct HoverBackgroundModifier<S: Shape>: ViewModifier {
+    var color: Color; var shape: S; var padding: CGFloat
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(shape.fill(isHovered ? color : Color.clear))
+            .contentShape(.interaction, Rectangle())
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
+            }
+    }
+}
+
+extension View {
+    func hoverBackground<S: Shape>(color: Color = Color.primary.opacity(0.1), shape: S, padding: CGFloat = 4) -> some View {
+        modifier(HoverBackgroundModifier(color: color, shape: shape, padding: padding))
+    }
+}
+
+struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
+    let shape: S
+    var top: CGFloat; var leading: CGFloat; var bottom: CGFloat; var trailing: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .padding(EdgeInsets(top: top, leading: leading, bottom: bottom, trailing: trailing))
+            .background(ZStack { shape.fill(.ultraThinMaterial); shape.fill(Color.black.opacity(0.25)) })
+            .overlay(shape.strokeBorder(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.08), Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
+    }
+}
+
+extension View {
+    func liquidGlassCapsule(top: CGFloat = 4, leading: CGFloat = 4, bottom: CGFloat = 4, trailing: CGFloat = 4) -> some View {
+        modifier(LiquidGlassModifier(shape: Capsule(), top: top, leading: leading, bottom: bottom, trailing: trailing))
+    }
+    func liquidGlassCapsule(_ all: CGFloat) -> some View {
+        liquidGlassCapsule(top: all, leading: all, bottom: all, trailing: all)
+    }
+}
+
 extension NSMutableParagraphStyle {
     func also(_ block: (NSMutableParagraphStyle) -> Void) -> NSMutableParagraphStyle { block(self); return self }
 }
@@ -716,15 +763,12 @@ struct ReleaseView: View {
                                     SharedState.editorCoordinator?.toolAction(item)
                                 }
                                 .buttonStyle(.borderless)
+                                .hoverBackground(shape: Circle(), padding: 0)
                                 .frame(width: 28, height: 24)
                             }
                         }
                         .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill(.ultraThinMaterial)
-                                .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
-                        )
+                        .liquidGlassCapsule(4)
                     }
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
