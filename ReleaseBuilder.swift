@@ -850,49 +850,69 @@ private class NativeEditorWindow: NSObject, NSToolbarDelegate, NSTabViewDelegate
         return item
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["bold","italic","underline",.space,"h1","h2","h3","p",.space,"bull","num","task",.space,"link","img","table","hr",.space,"quote","code","preBlock",.space,"left","center","right",.space,"indent","outdent",.space,"color","bg","clear"]
+        ids(["bold","italic","underline",.space,"h1","h2","h3","para",.space,"bull","num","task",.space,"link","img","table","hr",.space,"quote","code","preBlock",.space,"left","center","right",.space,"color","bg","clear"])
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
 
     @objc private func toolClick(_ sender: NSButton) {
-        let fm = NSFontManager.shared
+        let ts = textView.textStorage!
+        let sel = textView.selectedRange()
         switch sender.title {
-        case "B": fm.setBold(textView)
-        case "I": fm.setItalic(textView)
-        case "U": fm.setUnderline(textView)
-        case "H1": textView.textStorage?.setAttributedString(NSAttributedString(string: textView.string, attributes: [.font: NSFont.boldSystemFont(ofSize: 22)]))
-        case "H2": textView.textStorage?.setAttributedString(NSAttributedString(string: textView.string, attributes: [.font: NSFont.boldSystemFont(ofSize: 18)]))
-        case "H3": textView.textStorage?.setAttributedString(NSAttributedString(string: textView.string, attributes: [.font: NSFont.boldSystemFont(ofSize: 15)]))
-        case "¶": textView.textStorage?.setAttributedString(NSAttributedString(string: textView.string, attributes: [.font: NSFont.systemFont(ofSize: 13)]))
-        case "•": textView.insertText("\n• ", replacementRange: textView.selectedRange())
-        case "1.": textView.insertText("\n1. ", replacementRange: textView.selectedRange())
-        case "☑": textView.insertText("\n☐ ", replacementRange: textView.selectedRange())
+        case "B": toggleTrait(.boldFontMask, in: sel)
+        case "I": toggleTrait(.italicFontMask, in: sel)
+        case "U": ts.toggleUnderline(nil)
+        case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
+        case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
+        case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
+        case "¶": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
+        case "•": textView.insertText("\n• ", replacementRange: sel)
+        case "1.": textView.insertText("\n1. ", replacementRange: sel)
+        case "☑": textView.insertText("\n☐ ", replacementRange: sel)
         case "🔗":
-            let url = prompt("URL:") ?? "https://"
-            let sel = textView.selectedRange()
-            if sel.length > 0 { textView.textStorage?.addAttribute(.link, value: URL(string: url)!, range: sel) }
-            else { textView.insertText(url, replacementRange: sel) }
+            if let url = URL(string: prompt("URL:") ?? "https://") {
+                ts.addAttribute(.link, value: url, range: sel)
+            }
         case "🖼":
             if let url = prompt("URL изображения:") {
-                textView.insertText("\n[Изображение: \(url)]\n", replacementRange: textView.selectedRange())
+                textView.insertText("\n[Изображение: \(url)]\n", replacementRange: sel)
             }
-        case "⊞": textView.insertText("\n| Колонка 1 | Колонка 2 |\n| — | — |\n| Данные | Данные |\n", replacementRange: textView.selectedRange())
-        case "—": textView.insertText("\n——\n", replacementRange: textView.selectedRange())
-        case "❝": textView.insertText("\n> ", replacementRange: textView.selectedRange())
-        case "<>": textView.insertText("`\(textView.selectedRange().length > 0 ? textView.string[Range(textView.selectedRange(), in: textView.string)!] : "код")`", replacementRange: textView.selectedRange())
-        case "{}": textView.insertText("\n```\n\(textView.selectedRange().length > 0 ? textView.string[Range(textView.selectedRange(), in: textView.string)!] : "код")\n```\n", replacementRange: textView.selectedRange())
-        case "⇤": fm.alignLeft(textView)
-        case "⇔": fm.alignCenter(textView)
-        case "⇥": fm.alignRight(textView)
-        case "↦": textView.insertText("\t", replacementRange: textView.selectedRange())
-        case "↤": textView.deleteBackward(nil)
-        case "🎨": textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.red, range: textView.selectedRange())
-        case "◧": textView.textStorage?.addAttribute(.backgroundColor, value: NSColor.yellow, range: textView.selectedRange())
-        case "✕": textView.textStorage?.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: textView.selectedRange())
+        case "⊞": textView.insertText("\n| Колонка 1 | Колонка 2 |\n| — | — |\n| Данные | Данные |\n", replacementRange: sel)
+        case "—": textView.insertText("\n——\n", replacementRange: sel)
+        case "❝": textView.insertText("\n> ", replacementRange: sel)
+        case "<>": textView.insertText("`code`", replacementRange: sel)
+        case "{}": textView.insertText("\n```\ncode\n```\n", replacementRange: sel)
+        case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .left }, range: sel)
+        case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .center }, range: sel)
+        case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .right }, range: sel)
+        case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
+        case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
+        case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
         default: break
         }
     }
+
+    private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange) {
+        guard range.length > 0 else { return }
+        let ts = textView.textStorage!
+        ts.enumerateAttribute(.font, in: range, options: []) { value, r, _ in
+            if let font = value as? NSFont {
+                let newFont = NSFontManager.shared.convert(font, toHaveTrait: trait)
+                ts.addAttribute(.font, value: newFont, range: r)
+            }
+        }
+    }
+}
+
+private func ids(_ arr: [Any]) -> [NSToolbarItem.Identifier] {
+    arr.map {
+        if let s = $0 as? String { return NSToolbarItem.Identifier(s) }
+        return NSToolbarItem.Identifier.space
+    }
+}
+
+extension NSMutableParagraphStyle {
+    func also(_ block: (NSMutableParagraphStyle) -> Void) -> NSMutableParagraphStyle { block(self); return self }
 }
 
 private func prompt(_ msg: String) -> String? {
@@ -907,11 +927,10 @@ private func prompt(_ msg: String) -> String? {
 
 private let nativeToolItems: [String: String] = [
     "bold":"B","italic":"I","underline":"U",
-    "h1":"H1","h2":"H2","h3":"H3","p":"¶",
+    "h1":"H1","h2":"H2","h3":"H3","para":"¶",
     "bull":"•","num":"1.","task":"☑",
     "link":"🔗","img":"🖼","table":"⊞","hr":"—",
     "quote":"❝","code":"<>","preBlock":"{}",
     "left":"⇤","center":"⇔","right":"⇥",
-    "indent":"↦","outdent":"↤",
     "color":"🎨","bg":"◧","clear":"✕",
 ]
