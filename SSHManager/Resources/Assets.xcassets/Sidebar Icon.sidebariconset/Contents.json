@@ -1,0 +1,56 @@
+{
+  "images" : [
+    {
+      "filename" : "appIcon16.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "16x16"
+    },
+    {
+      "filename" : "appIcon32 1.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "16x16"
+    },
+    {
+      "filename" : "appIcon18.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "18x18"
+    },
+    {
+      "filename" : "appIcon36.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "18x18"
+    },
+    {
+      "filename" : "appIcon24.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "24x24"
+    },
+    {
+      "filename" : "appIcon48.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "24x24"
+    },
+    {
+      "filename" : "appIcon32.png",
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "32x32"
+    },
+    {
+      "filename" : "appIcon64.png",
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "32x32"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
