@@ -170,6 +170,7 @@ struct StepRow: View {
 // MARK: - Shared State (editor content accessible from VM)
 class SharedState {
     static var editorHTML = ""
+    static weak var editorCoordinator: EditorTextView.Coordinator?
 }
 
 // MARK: - ViewModel
@@ -617,9 +618,10 @@ struct EditorTextView: NSViewRepresentable {
         private func saveHTML() {
             guard let tv = textView else { return }
             let attr = tv.attributedString()
-            if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]) {
-                parent.html = String(data: d, encoding: .utf8) ?? ""
-                SharedState.editorHTML = parent.html
+            if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]),
+               let str = String(data: d, encoding: .utf8) {
+                parent.html = str
+                SharedState.editorHTML = str
             }
         }
 
@@ -648,7 +650,6 @@ struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
     @State private var editorHTML = SharedState.editorHTML
-    @State private var editorCoordinator: EditorTextView.Coordinator?
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
@@ -706,26 +707,27 @@ struct ReleaseView: View {
         VStack(spacing: 8) {
             // Хедер с кнопками форматирования
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
-                    ForEach(toolbarItems.indices, id: \.self) { i in
-                        let item = toolbarItems[i]
-                        if item.isEmpty {
-                            Rectangle().frame(width: 1, height: 20).foregroundStyle(.separator).padding(.horizontal, 4)
-                        } else {
-                            Button(item) {
-                                editorCoordinator?.toolAction(item)
+                HStack(spacing: 4) {
+                    ForEach(toolbarGroups.indices, id: \.self) { gi in
+                        HStack(spacing: 2) {
+                            ForEach(toolbarGroups[gi].indices, id: \.self) { i in
+                                let item = toolbarGroups[gi][i]
+                                Button(item) {
+                                    SharedState.editorCoordinator?.toolAction(item)
+                                }
+                                .buttonStyle(.borderless)
+                                .frame(width: 28, height: 24)
                             }
-                            .buttonStyle(.borderless)
-                            .frame(width: 30, height: 26)
                         }
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .liquidGlassCapsule(4)
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 8).padding(.vertical, 4)
             }
-            .frame(height: 30)
-            .background(Color.primary.opacity(0.04))
+            .frame(height: 36)
 
-            EditorTextView(html: $editorHTML, onReady: { editorCoordinator = $0 })
+            EditorTextView(html: $editorHTML, onReady: { SharedState.editorCoordinator = $0 })
                 .onChange(of: editorHTML) { _, _ in SharedState.editorHTML = editorHTML }
 
             HStack {
@@ -744,6 +746,16 @@ struct ReleaseView: View {
 }
 
 let toolbarItems: [String] = ["B","I","U","","H1","H2","H3","P","","•","1.","☑","","🔗","🖼","⊞","—","","❝","<>","{}","","⇤","⇔","⇥","","🎨","◧","✕"]
+
+let toolbarGroups: [[String]] = [
+    ["B","I","U"],
+    ["H1","H2","H3","P"],
+    ["•","1.","☑"],
+    ["🔗","🖼","⊞","—"],
+    ["❝","<>","{}"],
+    ["⇤","⇔","⇥"],
+    ["🎨","◧","✕"],
+]
 
 // MARK: - App Entry Point
 
