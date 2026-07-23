@@ -881,9 +881,9 @@ private class EditorWindowController: NSObject, NSToolbarDelegate, WKNavigationD
     }
 
     private func updatePreviews(html: String) {
-        let s = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px 24px;color:#1d1d1d;}h1,h2,h3,h4{margin:0 0 6px;}ul,ol{padding-left:24px;}li{margin:2px 0;}blockquote{border-left:3px solid #ccc;padding-left:12px;color:#555;margin:8px 0;}pre{background:#f0f0f0;padding:10px;border-radius:4px;font-family:monospace;}code{background:#f0f0f0;padding:1px 4px;border-radius:3px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:4px 8px;}th{background:#f5f5f5;}.task-list{list-style:none;padding-left:4px;}.task-list li{display:flex;align-items:center;gap:4px;}</style></head><body>\(h)</body></html>"
+        let s = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px 24px;color:#1d1d1d;}h1,h2,h3,h4{margin:0 0 6px;}ul,ol{padding-left:24px;}li{margin:2px 0;}blockquote{border-left:3px solid #ccc;padding-left:12px;color:#555;margin:8px 0;}pre{background:#f0f0f0;padding:10px;border-radius:4px;font-family:monospace;}code{background:#f0f0f0;padding:1px 4px;border-radius:3px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:4px 8px;}th{background:#f5f5f5;}.task-list{list-style:none;padding-left:4px;}.task-list li{display:flex;align-items:center;gap:4px;}</style></head><body>\(html)</body></html>"
         pWV.loadHTMLString(s, baseURL: URL(string: "about:blank"))
-        tV.string = htmlToText(h)
+        tV.string = htmlToText(html)
     }
 
     func tabView(_ tabView: NSTabView, didSelect item: NSTabViewItem?) {
@@ -896,10 +896,7 @@ private class EditorWindowController: NSObject, NSToolbarDelegate, WKNavigationD
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         guard let idx = Int(itemIdentifier.rawValue), idx >= 0, idx < editorToolbarDef.count else { return nil }
         let info = editorToolbarDef[idx]
-        if info.1.isEmpty {
-            let sep = NSTrackingSeparatorToolbarItem(identifier: itemIdentifier, splitView: nil, dividerIndex: 0)
-            return sep
-        }
+        if info.1.isEmpty { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = info.0
         item.toolTip = info.0
