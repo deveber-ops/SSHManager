@@ -542,6 +542,10 @@ class ReleaseVM: ObservableObject {
 
 // MARK: - Native Editor NSViewRepresentable
 
+extension NSMutableParagraphStyle {
+    func also(_ block: (NSMutableParagraphStyle) -> Void) -> NSMutableParagraphStyle { block(self); return self }
+}
+
 struct EditorTextView: NSViewRepresentable {
     @Binding var html: String
     var onReady: ((Coordinator) -> Void)?
@@ -599,9 +603,9 @@ struct EditorTextView: NSViewRepresentable {
             case "❝": tv.insertText("\n> ", replacementRange: sel)
             case "<>": tv.insertText("`code`", replacementRange: sel)
             case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
-            case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .left }, range: sel)
-            case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .center }, range: sel)
-            case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .right }, range: sel)
+            case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.left }, range: sel)
+            case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.center }, range: sel)
+            case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.right }, range: sel)
             case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
             case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
             case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
