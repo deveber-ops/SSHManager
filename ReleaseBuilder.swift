@@ -720,7 +720,11 @@ struct ReleaseView: View {
                             }
                         }
                         .padding(.horizontal, 6).padding(.vertical, 3)
-                        .liquidGlassCapsule(4)
+                        .background(
+                            Capsule()
+                                .fill(.ultraThinMaterial)
+                                .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+                        )
                     }
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
