@@ -5,7 +5,11 @@ import WebKit
 
 // MARK: - Configuration & Helpers
 
-let projectDir = FileManager.default.currentDirectoryPath
+let projectDir: String = {
+    // Используем путь к самому скрипту для определения корня проекта
+    let scriptPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+    return scriptPath
+}()
 let scheme = "SSHManager"
 let configuration = "Release"
 let archiveDir = "\(projectDir)/archive"
