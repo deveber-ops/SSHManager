@@ -7,10 +7,11 @@
       <sparkle:version>1.2.0</sparkle:version>
       <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <pubDate>2026-07-23T16:25:56Z</pubDate>
+      <pubDate>2026-07-23T16:33:44Z</pubDate>
       <description><![CDATA[Встроенный SSH-терминал
-• Собственное окно терминала с подключением по SSH прямо из приложения
-• Больше не нужен внешний Terminal.app — всё внутри SSH Manager
+
+• Собственное окно терминала с SSH-подключением внутри приложения
+• Больше не нужен внешний Terminal.app
 
 Сниппеты команд
 • Сохраняйте часто используемые команды для каждого сервера
@@ -19,15 +20,17 @@
 • Редактирование и удаление сниппетов
 
 Импорт и экспорт SSH-конфигураций
-• Импорт хостов из ~/.ssh/config — выбирайте нужные и добавляйте одним кликом
-• Экспорт серверов обратно в SSH-конфиг с возможностью выбора файла
-• Поддержка нестандартных портов и ключей
+• Импорт хостов и туннелей из ~/.ssh/config — выбирайте нужные и добавляйте одним кликом
+• Экспорт серверов и туннелей обратно в SSH-конфиг с выбором файла
+• Поддержка LocalForward, ключей, нестандартных портов
 
 Улучшения интерфейса
-• Исправлена область нажатия у всех кнопок — теперь не нужно целиться в иконку
+• Исправлена область нажатия у всех кнопок — не нужно целиться в иконку
 • Текстовые поля с ограничением символов и счётчиками
-• Единое окно для добавления и редактирования команд]]></description>
-      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.2.0/SSHManager-1.2.0.dmg" sparkle:version="1.2.0" sparkle:shortVersionString="1.2.0" length="3681080" type="application/octet-stream"/>
+• Единое окно для добавления и редактирования команд
+• Liquid Glass-модификатор теперь принимает произвольную форму (shape)
+• Тулбар с иконкой сервера и заголовком]]></description>
+      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.2.0/SSHManager-1.2.0.dmg" sparkle:version="1.2.0" sparkle:shortVersionString="1.2.0" length="3691679" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
