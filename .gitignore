@@ -7,3 +7,4 @@ DerivedData/
 .DS_Store
 release/
 archive/
+appcast.xml
