@@ -809,12 +809,9 @@ private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMe
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.setValue(false, forKey: "drawsBackground")
         wv.navigationDelegate = self
+        wv.translatesAutoresizingMaskIntoConstraints = false
         wv.loadHTMLString(htmlEditorTemplate, baseURL: nil)
         self.webView = wv
-
-        let scrollView = NSScrollView()
-        scrollView.documentView = wv
-        scrollView.hasVerticalScroller = true
 
         let btnCancel = NSButton(title: "Отмена", target: self, action: #selector(cancel))
         btnCancel.keyEquivalent = "\u{1b}"
@@ -826,17 +823,16 @@ private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMe
         let bottomBar = NSStackView(views: [btnCancel, NSView(), btnDone])
         bottomBar.orientation = .horizontal
         bottomBar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
         let contentView = NSView()
-        contentView.addSubview(scrollView)
+        contentView.addSubview(wv)
         contentView.addSubview(bottomBar)
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            wv.topAnchor.constraint(equalTo: contentView.topAnchor),
+            wv.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            wv.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
             bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
