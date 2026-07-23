@@ -7,7 +7,7 @@
       <sparkle:version>1.2.0</sparkle:version>
       <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <pubDate>2026-07-23T16:39:16Z</pubDate>
+      <pubDate>2026-07-23T16:50:43Z</pubDate>
       <description><![CDATA[Встроенный SSH-терминал
 • Собственное окно терминала с SSH-подключением внутри приложения
 • Больше не нужен внешний Terminal.app
@@ -29,7 +29,7 @@
 • Единое окно для добавления и редактирования команд
 • Liquid Glass-модификатор теперь принимает произвольную форму (shape)
 • Тулбар с иконкой сервера и заголовком]]></description>
-      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.2.0/SSHManager-1.2.0.dmg" sparkle:version="1.2.0" sparkle:shortVersionString="1.2.0" length="3691722" type="application/octet-stream"/>
+      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.2.0/SSHManager-1.2.0.dmg" sparkle:version="1.2.0" sparkle:shortVersionString="1.2.0" length="3691679" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
