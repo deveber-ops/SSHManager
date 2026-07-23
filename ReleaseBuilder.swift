@@ -1,6 +1,7 @@
 #!/usr/bin/env swift
 import SwiftUI
 import AppKit
+import WebKit
 
 // MARK: - Configuration & Helpers
 
@@ -301,37 +302,38 @@ class ReleaseVM: ObservableObject {
         s3.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
             let notesFile = "\(dmgDir)/release_notes.txt"
-            try? "Что нового:\n• \n".write(toFile: notesFile, atomically: true, encoding: .utf8)
-            
-            DispatchQueue.main.async {
-                s3.log = "📝 Ожидание заполнения описания в TextEdit..."
+            // Пробуем загрузить предыдущие заметки или создаём шаблон
+            let previousNotes = (try? String(contentsOfFile: notesFile, encoding: .utf8)) ?? ""
+            let initialHTML: String
+            if previousNotes.isEmpty {
+                initialHTML = "<h3>Что нового</h3>\n<ul>\n<li></li>\n</ul>"
+            } else {
+                initialHTML = convertToHTML(previousNotes)
             }
-            
-            let script = """
-                tell app "TextEdit"
-                    activate
-                    open POSIX file "\(notesFile)"
-                    set w to window 1
-                    repeat while exists w
-                        delay 0.5
-                    end repeat
-                    quit
-                end tell
-                """
-            let task = Process()
-            task.launchPath = "/usr/bin/osascript"
-            task.arguments = ["-e", script]
-            self.currentProcess = task
-            try? task.run()
-            task.waitUntilExit()
-            self.currentProcess = nil
-            
-            if let userNotes = try? String(contentsOfFile: notesFile, encoding: .utf8) {
-                DispatchQueue.main.async {
-                    s3.log = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            DispatchQueue.main.async {
+                s3.log = "📝 Ожидание заполнения описания в редакторе..."
+            }
+
+            var finalHTML = initialHTML
+            let semaphore = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                openHTMLEditor(initialHTML: initialHTML) { html in
+                    finalHTML = html
+                    semaphore.signal()
                 }
             }
-            
+            semaphore.wait()
+
+            // Сохраняем результат
+            try? finalHTML.write(toFile: notesFile, atomically: true, encoding: .utf8)
+
+            if let saved = try? String(contentsOfFile: notesFile, encoding: .utf8) {
+                DispatchQueue.main.async {
+                    s3.log = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
             return !self.isCancelled && FileManager.default.fileExists(atPath: notesFile)
         }
 
@@ -339,8 +341,7 @@ class ReleaseVM: ObservableObject {
         let s4 = Step("Appcast + Push")
         s4.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
-            let rawNotes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
-            let notes = convertToHTML(rawNotes)
+            let notes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
             let size = (try? FileManager.default.attributesOfItem(atPath: dmgPath)[.size] as? Int) ?? 0
             let downloadURL = "https://github.com/\(githubRepo)/releases/download/v\(currentVersion)/SSHManager-\(currentVersion).dmg"
             let date = ISO8601DateFormatter().string(from: Date())
@@ -385,7 +386,8 @@ class ReleaseVM: ObservableObject {
         let s5 = Step("GitHub Release")
         s5.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
-            let notes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
+            let htmlNotes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
+            let notes = htmlToText(htmlNotes).replacingOccurrences(of: "'", with: "'\\''")
             let releaseURL = "https://github.com/\(githubRepo)/releases/tag/v\(currentVersion)"
             
             var rawOutput = ""
@@ -702,4 +704,173 @@ func convertToHTML(_ text: String) -> String {
         result += "</ul>\n"
     }
     return result.trimmingCharacters(in: .newlines)
+}
+
+func htmlToText(_ html: String) -> String {
+    var text = html
+    // Заменяем основные теги на markdown-подобный текст
+    text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+    text = text.replacingOccurrences(of: "</p>", with: "\n")
+    text = text.replacingOccurrences(of: "</li>", with: "\n")
+    text = text.replacingOccurrences(of: "</h3>", with: "\n")
+    text = text.replacingOccurrences(of: "</ul>", with: "\n")
+    // Заменяем li на маркеры
+    text = text.replacingOccurrences(of: "<li>", with: "• ")
+    text = text.replacingOccurrences(of: "\\s*<li>", with: "• ", options: .regularExpression)
+    // Удаляем все оставшиеся теги
+    text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+    // Декодируем HTML entities
+    text = text.replacingOccurrences(of: "&amp;", with: "&")
+    text = text.replacingOccurrences(of: "&lt;", with: "<")
+    text = text.replacingOccurrences(of: "&gt;", with: ">")
+    text = text.replacingOccurrences(of: "&quot;", with: "\"")
+    // Убираем множественные пустые строки
+    while text.contains("\n\n\n") {
+        text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+    }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+// MARK: - HTML Editor (embedded for standalone script)
+
+private let htmlEditorTemplate = """
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><style>
+:root { --bg: #f5f5f5; --toolbar-bg: #e8e8e8; --text: #1d1d1d; --border: #c8c8c8; --btn-hover: #d8d8d8; --editor-bg: #ffffff; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; flex-direction: column; height: 100vh; user-select: none; }
+#toolbar { display: flex; gap: 4px; padding: 8px 12px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+#toolbar button { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 5px 9px; cursor: pointer; font-size: 13px; color: var(--text); }
+#toolbar button:hover { background: var(--btn-hover); border-color: var(--border); }
+#toolbar button.active { background: #c0c0c0; border-color: #aaa; }
+#toolbar .sep { width: 1px; background: var(--border); margin: 0 4px; }
+#editor { flex: 1; padding: 16px 20px; background: var(--editor-bg); outline: none; font-size: 14px; line-height: 1.6; color: var(--text); overflow-y: auto; }
+#editor h1 { font-size: 20px; margin: 0 0 8px; font-weight: 700; }
+#editor h2 { font-size: 17px; margin: 0 0 6px; font-weight: 600; }
+#editor h3 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+#editor ul, #editor ol { padding-left: 24px; margin: 4px 0; }
+#editor li { margin: 2px 0; }
+#editor p { margin: 0 0 6px; }
+#status { padding: 2px 12px; font-size: 11px; color: #999; background: var(--toolbar-bg); border-top: 1px solid var(--border); }
+</style></head><body>
+<div id="toolbar">
+<button onclick="exec('bold')" title="Bold (⌘B)"><b>B</b></button>
+<button onclick="exec('italic')" title="Italic (⌘I)"><i>I</i></button>
+<span class="sep"></span>
+<button onclick="exec('formatBlock','h3')" title="Heading"><b>H</b></button>
+<button onclick="exec('insertUnorderedList')" title="List">•</button>
+<span class="sep"></span>
+<button onclick="exec('undo')" title="Undo (⌘Z)">↩</button>
+<button onclick="exec('redo')" title="Redo (⌘⇧Z)">↪</button>
+</div>
+<div id="editor" contenteditable="true"></div>
+<div id="status">Ready</div>
+<script>
+const editor = document.getElementById('editor');
+function exec(cmd, arg) { document.execCommand(cmd, false, arg || null); editor.focus(); updateToolbar(); }
+function updateToolbar() {
+  document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
+  if (document.queryCommandState('bold')) document.querySelector('[onclick*="bold"]').classList.add('active');
+  if (document.queryCommandState('italic')) document.querySelector('[onclick*="italic"]').classList.add('active');
+}
+editor.addEventListener('keydown', e => {
+  if (e.metaKey && e.key === 'b') { e.preventDefault(); exec('bold'); }
+  if (e.metaKey && e.key === 'i') { e.preventDefault(); exec('italic'); }
+  if (e.metaKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); exec('undo'); }
+  if (e.metaKey && e.key === 'z' && e.shiftKey) { e.preventDefault(); exec('redo'); }
+});
+editor.addEventListener('input', () => { window.webkit.messageHandlers.contentChanged.postMessage(editor.innerHTML.trim()); });
+editor.addEventListener('click', updateToolbar);
+editor.addEventListener('keyup', updateToolbar);
+function setContent(html) { editor.innerHTML = html; editor.focus(); }
+function getContent() { return editor.innerHTML.trim(); }
+</script></body></html>
+"""
+
+private func openHTMLEditor(initialHTML: String, completion: @escaping (String) -> Void) {
+    let editor = EditorWindowController(initialHTML: initialHTML, completion: completion)
+    editor.showWindow(nil)
+}
+
+private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    private let initialHTML: String
+    private let completion: (String) -> Void
+    private var window: NSWindow?
+    private var webView: WKWebView?
+
+    init(initialHTML: String, completion: @escaping (String) -> Void) {
+        self.initialHTML = initialHTML
+        self.completion = completion
+        super.init()
+    }
+
+    func showWindow(_ sender: Any?) {
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "contentChanged")
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.setValue(false, forKey: "drawsBackground")
+        wv.navigationDelegate = self
+        wv.loadHTMLString(htmlEditorTemplate, baseURL: nil)
+        self.webView = wv
+
+        let scrollView = NSScrollView()
+        scrollView.documentView = wv
+        scrollView.hasVerticalScroller = true
+
+        let btnCancel = NSButton(title: "Отмена", target: self, action: #selector(cancel))
+        btnCancel.keyEquivalent = "\u{1b}"
+        let btnDone = NSButton(title: "Готово", target: self, action: #selector(done))
+        btnDone.keyEquivalent = "\r"
+        btnDone.keyEquivalentModifierMask = .command
+        btnDone.bezelStyle = .rounded
+
+        let bottomBar = NSStackView(views: [btnCancel, NSView(), btnDone])
+        bottomBar.orientation = .horizontal
+        bottomBar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+
+        let contentView = NSView()
+        contentView.addSubview(scrollView)
+        contentView.addSubview(bottomBar)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            bottomBar.heightAnchor.constraint(equalToConstant: 40)
+        ])
+
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 500), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        win.title = "Редактор описания обновления"
+        win.contentView = contentView
+        win.center()
+        win.isReleasedWhenClosed = false
+        win.makeKeyAndOrderFront(nil)
+        self.window = win
+    }
+
+    @objc private func cancel() { window?.close() }
+    @objc private func done() {
+        webView?.evaluateJavaScript("getContent()") { [weak self] result, _ in
+            if let html = result as? String {
+                self?.completion(html)
+            }
+            self?.window?.close()
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let escaped = initialHTML
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "`", with: "\\`")
+            .replacingOccurrences(of: "$", with: "\\$")
+        webView.evaluateJavaScript("setContent(`\(escaped)`)")
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        // No-op: content tracking if needed
+    }
 }
