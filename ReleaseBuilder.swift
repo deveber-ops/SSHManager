@@ -167,74 +167,6 @@ struct StepRow: View {
     }
 }
 
-// MARK: - Shared State (editor content accessible from VM)
-class SharedState {
-    static var editorHTML = ""
-}
-
-// MARK: - Editor Controller (shared between toolbar and NSTextView)
-
-class EditorController: ObservableObject {
-    weak var textView: NSTextView?
-
-    func toolAction(_ action: String) {
-        guard let tv = textView else { return }
-        let ts = tv.textStorage!
-        let sel = tv.selectedRange()
-        switch action {
-        case "B": toggleTrait(.boldFontMask, in: sel, ts: ts)
-        case "I": toggleTrait(.italicFontMask, in: sel, ts: ts)
-        case "U":
-            ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
-                ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
-            }
-        case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
-        case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
-        case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
-        case "P": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
-        case "•": tv.insertText("\n• ", replacementRange: sel)
-        case "1.": tv.insertText("\n1. ", replacementRange: sel)
-        case "☑": tv.insertText("\n☐ ", replacementRange: sel)
-        case "🔗":
-            if let url = URL(string: promptInput("URL:") ?? "https://") { ts.addAttribute(.link, value: url, range: sel) }
-        case "🖼":
-            if let url = promptInput("URL изображения:") { tv.insertText("\n[Изображение: \(url)]\n", replacementRange: sel) }
-        case "⊞": tv.insertText("\n| A | B |\n| — | — |\n| x | y |\n", replacementRange: sel)
-        case "—": tv.insertText("\n——\n", replacementRange: sel)
-        case "❝": tv.insertText("\n> ", replacementRange: sel)
-        case "<>": tv.insertText("`code`", replacementRange: sel)
-        case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
-        case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.left }, range: sel)
-        case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.center }, range: sel)
-        case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.right }, range: sel)
-        case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
-        case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
-        case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
-        default: break
-        }
-        saveHTML()
-    }
-
-    private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange, ts: NSTextStorage) {
-        guard range.length > 0 else { return }
-        ts.enumerateAttribute(.font, in: range, options: []) { v, r, _ in
-            if let font = v as? NSFont {
-                ts.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
-            }
-        }
-        saveHTML()
-    }
-
-    func saveHTML() {
-        guard let tv = textView else { return }
-        let attr = tv.attributedString()
-        if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]),
-           let str = String(data: d, encoding: .utf8) {
-            SharedState.editorHTML = str
-        }
-    }
-}
-
 // MARK: - ViewModel
 
 class ReleaseVM: ObservableObject {
@@ -373,15 +305,35 @@ class ReleaseVM: ObservableObject {
         s3.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
             let notesFile = "\(dmgDir)/release_notes.txt"
-            // Используем содержимое редактора
-            let html = SharedState.editorHTML
-            if html.isEmpty {
-                DispatchQueue.main.async { s3.log = "⚠️ Описание не заполнено" }
-                return false
+            let previous = (try? String(contentsOfFile: notesFile, encoding: .utf8)) ?? "<h3>Что нового</h3>\n<ul>\n<li></li>\n</ul>"
+            try? previous.write(toFile: notesFile, atomically: true, encoding: .utf8)
+
+            DispatchQueue.main.async { s3.log = "📝 Ожидание редактирования в TextEdit..." }
+
+            // Открываем TextEdit и ждём закрытия окна
+            let script = """
+                tell app "TextEdit"
+                    activate
+                    open POSIX file "\(notesFile)"
+                    set w to window 1
+                    repeat while exists w
+                        delay 0.5
+                    end repeat
+                    quit
+                end tell
+                """
+            let task = Process()
+            task.launchPath = "/usr/bin/osascript"
+            task.arguments = ["-e", script]
+            self.currentProcess = task
+            try? task.run()
+            task.waitUntilExit()
+            self.currentProcess = nil
+
+            if let content = try? String(contentsOfFile: notesFile, encoding: .utf8) {
+                DispatchQueue.main.async { s3.log = content }
             }
-            try? html.write(toFile: notesFile, atomically: true, encoding: .utf8)
-            DispatchQueue.main.async { s3.log = "✅ Описание сохранено" }
-            return true
+            return !self.isCancelled && FileManager.default.fileExists(atPath: notesFile)
         }
 
         // MARK: Step 4 - Appcast + Push
@@ -603,84 +555,6 @@ class ReleaseVM: ObservableObject {
     }
 }
 
-// MARK: - Native Editor NSViewRepresentable
-
-// MARK: - Liquid Glass Modifier (from main app)
-
-// MARK: - Hover Background Modifier (from main app)
-
-struct HoverBackgroundModifier<S: Shape>: ViewModifier {
-    var color: Color; var shape: S; var padding: CGFloat
-    @State private var isHovered = false
-
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(shape.fill(isHovered ? color : Color.clear))
-            .contentShape(.interaction, Rectangle())
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
-            }
-    }
-}
-
-extension View {
-    func hoverBackground<S: Shape>(color: Color = Color.primary.opacity(0.1), shape: S, padding: CGFloat = 4) -> some View {
-        modifier(HoverBackgroundModifier(color: color, shape: shape, padding: padding))
-    }
-}
-
-struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
-    let shape: S
-    var top: CGFloat; var leading: CGFloat; var bottom: CGFloat; var trailing: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .padding(EdgeInsets(top: top, leading: leading, bottom: bottom, trailing: trailing))
-            .background(ZStack { shape.fill(.ultraThinMaterial); shape.fill(Color.black.opacity(0.25)) })
-            .overlay(shape.strokeBorder(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.08), Color.white.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
-            .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
-    }
-}
-
-extension View {
-    func liquidGlassCapsule(top: CGFloat = 4, leading: CGFloat = 4, bottom: CGFloat = 4, trailing: CGFloat = 4) -> some View {
-        modifier(LiquidGlassModifier(shape: Capsule(), top: top, leading: leading, bottom: bottom, trailing: trailing))
-    }
-    func liquidGlassCapsule(_ all: CGFloat) -> some View {
-        liquidGlassCapsule(top: all, leading: all, bottom: all, trailing: all)
-    }
-}
-
-extension NSMutableParagraphStyle {
-    func also(_ block: (NSMutableParagraphStyle) -> Void) -> NSMutableParagraphStyle { block(self); return self }
-}
-
-struct EditorTextView: NSViewRepresentable {
-    @Binding var html: String
-    var onReady: ((NSTextView) -> Void)?
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let tv = NSTextView()
-        tv.isRichText = true; tv.allowsUndo = true; tv.font = NSFont.systemFont(ofSize: 13)
-        let scroll = NSScrollView()
-        scroll.documentView = tv; scroll.hasVerticalScroller = true
-
-        if let data = html.data(using: .utf8),
-           let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
-            tv.textStorage?.setAttributedString(attr)
-        }
-        onReady?(tv)
-        return scroll
-    }
-
-    func updateNSView(_ nsView: NSScrollView, context: Context) {}
-
-    class Coordinator: NSObject, NSTextViewDelegate {}
-}
-
 private func promptInput(_ msg: String) -> String? {
     let a = NSAlert(); a.messageText = msg; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Отмена")
     let f = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
@@ -688,93 +562,36 @@ private func promptInput(_ msg: String) -> String? {
     return a.runModal() == .alertFirstButtonReturn ? f.stringValue : nil
 }
 
-// MARK: - Main Release View
+// MARK: - Main View
 
 struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
-    @StateObject private var editorController = EditorController()
-    @State private var editorHTML = SharedState.editorHTML
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 220)
-        } detail: {
-            detailView
-        }
-        .navigationSplitViewStyle(.prominentDetail)
-        .frame(minWidth: 850, minHeight: 600)
-    }
-
-    private var sidebar: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "app.connected.to.app.below.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text("SSHManager").font(.system(size: 13, weight: .bold))
-                Text("v\(vm.appVersion)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color.primary.opacity(0.06), in: Capsule())
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.tint)
+                Text("SSHManager").font(.system(size: 14, weight: .bold)).foregroundStyle(.primary)
+                Text("v\(vm.appVersion)").font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(Color.primary.opacity(0.06), in: Capsule())
                 Spacer()
             }
-            .padding(.horizontal, 10).padding(.top, 8)
+            .padding(.horizontal, 16).padding(.top, 32)
 
             ScrollView {
-                LazyVStack(spacing: 6, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(spacing: 8, pinnedViews: [.sectionHeaders]) {
                     ForEach(vm.steps) { step in StepRow(step: step) }
                 }
-                .padding(.horizontal, 8).padding(.bottom, 8)
+                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
             }
 
             if !vm.currentStep.isEmpty {
-                Text(vm.currentStep).font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
-                ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear).padding(.horizontal, 10)
+                Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear)
             }
-
-            HStack {
-                Button("Копировать лог") {
-                    let all = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(all, forType: .string)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-                }
-                .disabled(vm.steps.allSatisfy { $0.log.isEmpty })
-                if copied { Text("✓").font(.caption).foregroundColor(.green) }
-            }
-            .padding(.horizontal, 10).padding(.bottom, 8)
-        }
-    }
-
-    private var detailView: some View {
-        VStack(spacing: 8) {
-            // Хедер с кнопками форматирования
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(toolbarGroups.indices, id: \.self) { gi in
-                        HStack(spacing: 2) {
-                            ForEach(toolbarGroups[gi].indices, id: \.self) { i in
-                                let item = toolbarGroups[gi][i]
-                                Button(item) {
-                                    editorController.toolAction(item)
-                                }
-                                .buttonStyle(.borderless)
-                                .hoverBackground(shape: Circle(), padding: 0)
-                                .frame(width: 28, height: 24)
-                            }
-                        }
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .liquidGlassCapsule(4)
-                    }
-                }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-            }
-            .frame(height: 36)
-
-            EditorTextView(html: $editorHTML, onReady: { editorController.textView = $0 })
-                .onChange(of: editorHTML) { _, _ in SharedState.editorHTML = editorHTML }
+            .padding(.horizontal, 16)
 
             HStack {
                 if vm.isRunning {
@@ -784,24 +601,20 @@ struct ReleaseView: View {
                 }
                 Button("Сбросить") { vm.reset() }
                 Spacer()
+                Button("Копировать лог") {
+                    let all = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(all, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                }
+                .disabled(vm.steps.allSatisfy { $0.log.isEmpty })
+                if copied { Text("Скопировано ✓").font(.caption).foregroundColor(.green) }
             }
             .padding(.horizontal, 16).padding(.bottom, 12)
         }
-        .padding(.top, 8)
+        .frame(width: 480, height: 420)
     }
 }
-
-let toolbarItems: [String] = ["B","I","U","","H1","H2","H3","P","","•","1.","☑","","🔗","🖼","⊞","—","","❝","<>","{}","","⇤","⇔","⇥","","🎨","◧","✕"]
-
-let toolbarGroups: [[String]] = [
-    ["B","I","U"],
-    ["H1","H2","H3","P"],
-    ["•","1.","☑"],
-    ["🔗","🖼","⊞","—"],
-    ["❝","<>","{}"],
-    ["⇤","⇔","⇥"],
-    ["🎨","◧","✕"],
-]
 
 // MARK: - App Entry Point
 
@@ -810,9 +623,10 @@ app.setActivationPolicy(.regular)
 
 let window = NSWindow(contentViewController: NSHostingController(rootView: ReleaseView()))
 window.title = "SSH Manager Release Builder"
-window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
 window.titlebarAppearsTransparent = true
-window.setContentSize(NSSize(width: 850, height: 600))
+window.isMovableByWindowBackground = true
+window.setContentSize(NSSize(width: 480, height: 420))
 window.center()
 window.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
