@@ -34,10 +34,19 @@ struct SSHServer: Identifiable, Codable, Equatable {
     var isActive: Bool = false
     var icon: String = "server.rack"
     var tunnels: [TunnelConnection] = []
+    var snippets: [CommandSnippet] = []
 
     var isValid: Bool {
         !sshHost.isEmpty && !sshUser.isEmpty
     }
+}
+
+struct CommandSnippet: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var name: String = ""
+    var command: String = ""
+    var description: String = ""
+    var requireConfirmation: Bool = false
 }
 
 struct TunnelConnection: Identifiable, Codable, Equatable {

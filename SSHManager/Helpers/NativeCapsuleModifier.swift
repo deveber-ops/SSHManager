@@ -1,7 +1,8 @@
 import SwiftUI
 
-// MARK: - Модификатор Liquid Glass Капсулы
-struct LiquidGlassCapsuleModifier: ViewModifier {
+// MARK: - Модификатор Liquid Glass
+struct LiquidGlassModifier<S: InsettableShape>: ViewModifier {
+    let shape: S
     var top: CGFloat
     var leading: CGFloat
     var bottom: CGFloat
@@ -9,28 +10,23 @@ struct LiquidGlassCapsuleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Применяем точные отступы с каждой стороны
             .padding(EdgeInsets(top: top, leading: leading, bottom: bottom, trailing: trailing))
             .background(
                 ZStack {
-                    // 1. Матовый материал подложки
-                    Capsule()
+                    shape
                         .fill(.ultraThinMaterial)
-
-                    // 2. Легкая темная тонировка для сочности
-                    Capsule()
+                    shape
                         .fill(Color.black.opacity(0.25))
                 }
             )
-            // 3. Стеклянный блик по контуру (Glass Specular Stroke)
             .overlay(
-                Capsule()
+                shape
                     .strokeBorder(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.25), // Яркий блик сверху слева
-                                Color.white.opacity(0.08), // Почти прозрачный снизу
-                                Color.white.opacity(0.15)  // Легкий отсвет справа
+                                Color.white.opacity(0.25),
+                                Color.white.opacity(0.08),
+                                Color.white.opacity(0.15)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -38,23 +34,24 @@ struct LiquidGlassCapsuleModifier: ViewModifier {
                         lineWidth: 1
                     )
             )
-            // 4. Мягкая глубинная тень
             .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
     }
 }
 
-// MARK: - Удобное расширение с перегрузкой методов (Overloading)
+// MARK: - Удобное расширение с перегрузкой методов
 extension View {
-    
-    // 1. По отдельности (каждая сторона настраивается индивидуально)
-    func liquidGlassCapsule(
+
+    // 1. По отдельности с произвольной формой
+    func liquidGlassCapsule<S: InsettableShape>(
+        shape: S,
         top: CGFloat = 4,
         leading: CGFloat = 4,
         bottom: CGFloat = 4,
         trailing: CGFloat = 4
     ) -> some View {
         self.modifier(
-            LiquidGlassCapsuleModifier(
+            LiquidGlassModifier(
+                shape: shape,
                 top: top,
                 leading: leading,
                 bottom: bottom,
@@ -63,13 +60,30 @@ extension View {
         )
     }
 
-    // 2. Общий отступ для ВСЕХ сторон: .liquidGlassCapsule(4)
+    // 2. По отдельности (каждая сторона настраивается индивидуально) — Capsule по умолчанию
+    func liquidGlassCapsule(
+        top: CGFloat = 4,
+        leading: CGFloat = 4,
+        bottom: CGFloat = 4,
+        trailing: CGFloat = 4
+    ) -> some View {
+        self.modifier(
+            LiquidGlassModifier(
+                shape: Capsule(),
+                top: top,
+                leading: leading,
+                bottom: bottom,
+                trailing: trailing
+            )
+        )
+    }
+
+    // 3. Общий отступ для ВСЕХ сторон: .liquidGlassCapsule(4)
     func liquidGlassCapsule(_ all: CGFloat) -> some View {
         self.liquidGlassCapsule(top: all, leading: all, bottom: all, trailing: all)
     }
 
-    // 3. Горизонтальный и вертикальный: .liquidGlassCapsule(4, 10)
-    // Где 1-й параметр — горизонтальный, 2-й — вертикальный
+    // 4. Горизонтальный и вертикальный: .liquidGlassCapsule(4, 10)
     func liquidGlassCapsule(_ horizontal: CGFloat, _ vertical: CGFloat) -> some View {
         self.liquidGlassCapsule(
             top: vertical,
@@ -87,7 +101,6 @@ struct LiquidGlassControlBar: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // Кнопка Настроек
             Button(action: onSettingsTap) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 16, weight: .regular))
@@ -95,7 +108,6 @@ struct LiquidGlassControlBar: View {
             }
             .buttonStyle(GlassIconButtonStyle())
 
-            // Кнопка Информации
             Button(action: onInfoTap) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 16, weight: .regular))
@@ -103,7 +115,6 @@ struct LiquidGlassControlBar: View {
             }
             .buttonStyle(GlassIconButtonStyle())
         }
-        // Применяем капсулу с точечным заданием всех 4-х отступов
         .liquidGlassCapsule(top: 9, leading: 14, bottom: 9, trailing: 14)
     }
 }

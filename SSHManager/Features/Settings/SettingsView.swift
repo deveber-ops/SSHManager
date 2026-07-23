@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Binding var selectedServer: SSHServer.ID?
     @State private var searchText = ""
     @State private var isProgrammaticSelection = false
+    @State private var showImportSheet = false
     @ObservedObject private var updateManager = UpdateManager.shared
 
     private var filteredServers: [SSHServer] {
@@ -46,29 +47,7 @@ struct SettingsView: View {
                 } else {
                     List {
                         ForEach(filteredServers) { server in
-                            ServerRowView(server: server, configManager: configManager)
-                                // 1. Внутренние отступы контента (чтобы текст не прилипал к краям капсулы и не сжимался)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 4)
-                                
-                                // 2. Делаем всю область кликабельной
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selectedServer = server.id
-                                }
-                                
-                                // 3. Рисуем капсулу ВОКРУГ самого ServerRowView, а не в фоне списка
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12) // Укажите нужный радиус скругления здесь
-                                        .fill(selectedServer == server.id ? Color.gray.opacity(0.3) : Color.clear)
-                                )
-                                
-                                // 4. Внешние отступы от краев самого List (настройте под себя)
-                                .listRowInsets(EdgeInsets(top: 0, leading: -8, bottom: 0, trailing: -8))
-                                
-                                // 5. Делаем системный фон прозрачным, чтобы он не конфликтовал при скролле
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
+                            serverRow(server)
                         }
                         .onDelete { offsets in
                             let toDelete = offsets.map { filteredServers[$0].id }
@@ -121,8 +100,13 @@ struct SettingsView: View {
                     Label("Добавить", systemImage: "plus")
                     Text("Добавить сервер")
                 }
-
+                
                 Spacer()
+
+                Button(action: { showImportSheet = true }) {
+                    Label("Импорт / Экспорт", systemImage: "arrow.up.arrow.down")
+                }
+                .help("Импорт и экспорт SSH config")
 
                 Button(action: {
                     isProgrammaticSelection = true
@@ -147,6 +131,9 @@ struct SettingsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showImportSheet) {
+            SSHConfigExchangeView(configManager: configManager)
+        }
     }
 
     private func binding(for server: SSHServer) -> Binding<SSHServer> {
@@ -170,5 +157,23 @@ struct SettingsView: View {
             selectedServer = server.id
         }
         configManager.saveConnections()
+    }
+
+    @ViewBuilder
+    private func serverRow(_ server: SSHServer) -> some View {
+        ServerRowView(server: server, configManager: configManager)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedServer = server.id
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(selectedServer == server.id ? Color.gray.opacity(0.3) : Color.clear)
+            )
+            .listRowInsets(EdgeInsets(top: 0, leading: -8, bottom: 0, trailing: -8))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }

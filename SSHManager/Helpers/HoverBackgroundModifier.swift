@@ -14,6 +14,7 @@ struct HoverBackgroundModifier<S: Shape>: ViewModifier {
             .background(
                 shape.fill(isHovered ? color : Color.clear)
             )
+            .contentShape(.interaction, Rectangle())
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.15)) {
                     isHovered = hovering

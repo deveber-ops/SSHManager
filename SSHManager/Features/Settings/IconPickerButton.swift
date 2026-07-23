@@ -278,6 +278,7 @@ struct IconPickerButton: View {
             Image(systemName: selectedIcon)
                 .font(.title3)
                 .frame(width: 40, height: 40)
+                .contentShape(Rectangle())
                 .hoverBackground(shape: Circle())
         }
         .buttonStyle(.plain)

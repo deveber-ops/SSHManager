@@ -35,6 +35,7 @@ struct ServerRowView: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(server.isActive ? .green : .secondary)
                         .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                         .background(server.isActive ? Color.green.opacity(0.15) : .clear, in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -45,6 +46,7 @@ struct ServerRowView: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
                         .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .hoverBackground(shape: Circle(), padding: 0)
@@ -58,6 +60,7 @@ struct ServerRowView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .hoverBackground(shape: Circle(), padding: 0)

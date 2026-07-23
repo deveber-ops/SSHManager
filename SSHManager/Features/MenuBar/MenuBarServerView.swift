@@ -45,20 +45,12 @@ struct ServerMenuRowView: View {
                 
                 HStack {
                     // Кнопка терминала
-                    Button(action: {
-                        let user = server.sshUser
-                        let host = server.sshHost
-                        let port = server.sshPort.isEmpty ? "22" : server.sshPort
-                        let keyPath = server.authType == .key && !server.sshKeyPath.isEmpty
-                            ? "-i \((server.sshKeyPath as NSString).expandingTildeInPath) -o IdentitiesOnly=yes"
-                            : ""
-                        let cmd = "ssh \(keyPath) -p \(port) \(user)@\(host)"
-                        let script = "tell app \"Terminal\" to activate do script \"\(cmd)\""
-                        Process.launchedProcess(launchPath: "/usr/bin/osascript", arguments: ["-e", script])
-                    }) {
+                    Button(action: { openTerminalWindow(for: server) }) {
                         Image(systemName: "terminal")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .hoverBackground(shape: Circle())
@@ -70,6 +62,8 @@ struct ServerMenuRowView: View {
                         Image(systemName: "gearshape")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .hoverBackground(shape: Circle())
