@@ -2,654 +2,247 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Configuration & Helpers
-
-let projectDir: String = {
-    // Используем путь к самому скрипту для определения корня проекта
-    let scriptPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
-    return scriptPath
-}()
+// MARK: - Configuration
+let projectDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 let scheme = "SSHManager"
-let configuration = "Release"
 let archiveDir = "\(projectDir)/archive"
 let dmgDir = "\(projectDir)/release"
-let githubRepo = ProcessInfo.processInfo.environment["GITHUB_REPO"] ?? "deveber-ops/SSHManager"
+let githubRepo = "deveber-ops/SSHManager"
 
-/// Динамическое чтение версии из project.pbxproj
-func fetchAppVersion() -> String {
-    let task = Process()
-    task.launchPath = "/bin/bash"
-    task.arguments = ["-c", "grep 'MARKETING_VERSION' '\(projectDir)/SSHManager.xcodeproj/project.pbxproj' | tail -1 | sed 's/.*= //;s/;//'"]
-    let pipe = Pipe()
-    task.standardOutput = pipe
-    task.launch()
-    task.waitUntilExit()
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let version = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    return version.isEmpty ? "1.0" : version
-}
-
-// MARK: - Step Model
-
-class Step: ObservableObject, Identifiable {
+// MARK: - Models
+struct Step: Identifiable {
     let id = UUID()
     let name: String
-
-    /// 0-pending, 1-running, 2-done, 3-failed
-    @Published var status = 0
-    @Published var log = ""
-    @Published var openPath: String? = nil
-    @Published var openURL: String? = nil
-
+    var log = ""
+    var status: StepStatus = .pending
     var action: (() -> Bool)?
-
-    init(_ name: String) {
-        self.name = name
-    }
-
-    func start()  { status = 1 }
-    func done(_ ok: Bool) { status = ok ? 2 : 3 }
-}
-
-// MARK: - Step Row View
-
-struct StepRow: View {
-    @ObservedObject var step: Step
-    @State private var isExpanded = false
-
-    var body: some View {
-        Section {
-            // MARK: - Контент лога и действие
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        Text(step.log.isEmpty ? "—" : step.log)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-
-                    // Дополнительные кнопки действий
-                    if step.openPath != nil || step.openURL != nil {
-                        HStack(spacing: 8) {
-                            if let path = step.openPath {
-                                Button {
-                                    NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                                } label: {
-                                    Label("Показать в Finder", systemImage: "folder")
-                                        .font(.system(size: 11, weight: .medium))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-
-                            if let urlString = step.openURL, let url = URL(string: urlString) {
-                                Button {
-                                    NSWorkspace.shared.open(url)
-                                } label: {
-                                    Label("Открыть на GitHub", systemImage: "safari")
-                                        .font(.system(size: 11, weight: .medium))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                        }
-                        .padding(.top, 2)
-                    }
-                }
-                .padding(10)
-                .background(Color.black.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.horizontal, 2)
-                .padding(.bottom, 6)
-            }
-        } header: {
-            // MARK: - Закрепляемый триггер шапки
-            Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    statusIcon
-
-                    Text(step.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 14, height: 14)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color(NSColor.windowBackgroundColor))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(isExpanded ? 0.2 : 0), radius: 4, x: 0, y: 2)
-        }
-    }
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        switch step.status {
-        case 0:
-            Circle()
-                .fill(.tertiary)
-                .frame(width: 12, height: 12)
-        case 1:
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.6)
-                .frame(width: 12, height: 12)
-        case 2:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-                .font(.system(size: 13))
-        case 3:
-            Image(systemName: "xmark.circle.fill")
-                .foregroundColor(.red)
-                .font(.system(size: 13))
-        default:
-            EmptyView()
-        }
-    }
+    enum StepStatus { case pending, running, done, failed }
 }
 
 // MARK: - ViewModel
-
 class ReleaseVM: ObservableObject {
     @Published var steps: [Step] = []
-    @Published var currentStep = ""
     @Published var progress: Double = 0
-    @Published var appVersion: String = ""
     @Published var isRunning = false
+    @Published var editorText = "- Что нового\n+ описание\n"
+    private var cancelled = false
 
-    private var isCancelled = false
-    private var currentProcess: Process?
+    func setup() {
+        let ver = fetchVersion()
+        let dmg = "\(dmgDir)/SSHManager-\(ver).dmg"
 
-    init() {
-        setupSteps()
-    }
-
-    /// Формирование шагов и возврат в исходное состояние
-    func setupSteps() {
-        let currentVersion = fetchAppVersion()
-        self.appVersion = currentVersion
-
-        let dmgPath = "\(dmgDir)/SSHManager-\(currentVersion).dmg"
-        let appcastPath = "\(dmgDir)/appcast.xml"
-
-        // MARK: Step 0 - Очистка
-        let s0 = Step("Очистка сборок")
-        s0.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            var logs: [String] = []
-            
-            if FileManager.default.fileExists(atPath: archiveDir) {
-                try? FileManager.default.removeItem(atPath: archiveDir)
-                logs.append("🧹 Очищена директория архивов: \(archiveDir)")
-            }
-            if FileManager.default.fileExists(atPath: dmgDir) {
-                try? FileManager.default.removeItem(atPath: dmgDir)
-                logs.append("🧹 Очищена директория релиза: \(dmgDir)")
-            }
-            
-            try? FileManager.default.createDirectory(atPath: archiveDir, withIntermediateDirectories: true)
-            try? FileManager.default.createDirectory(atPath: dmgDir, withIntermediateDirectories: true)
-            logs.append("📁 Созданы чистые папки для новой сборки.")
-
-            DispatchQueue.main.async {
-                s0.log = logs.joined(separator: "\n")
-            }
-            return true
-        }
-
-        // MARK: Step 1 - Архивирование (Понятные шаги вместо сырого вывода)
-        let s1 = Step("Архивирование")
-        s1.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            
-            DispatchQueue.main.async {
-                s1.log = """
-                🔨 Запуск архивации проекта...
-                • Проект: \(scheme).xcodeproj
-                • Конфигурация: \(configuration)
-                • Схема: \(scheme)
-                • Целевой путь: \(archiveDir)/\(scheme).xcarchive
-                
-                ⏳ Выполняется xcodebuild archive...
-                """
-            }
-            
-            var errorLogs = ""
-            let ok = self.shellOK("xcodebuild -project '\(projectDir)/SSHManager.xcodeproj' -scheme '\(scheme)' -configuration '\(configuration)' -derivedDataPath '\(projectDir)/build' archive -archivePath '\(archiveDir)/\(scheme).xcarchive' CODE_SIGN_STYLE=Automatic 2>&1") { text in
-                if text.contains("error:") || text.contains("FAILED") {
-                    errorLogs += text + "\n"
-                }
-            }
-            
-            guard !self.isCancelled else { return false }
-            let appPath = "\(archiveDir)/\(scheme).xcarchive/Products/Applications/SSHManager.app"
-            let exists = FileManager.default.fileExists(atPath: appPath)
-            
-            if ok && exists {
-                self.shell("cp -R '\(appPath)' '\(archiveDir)/SSHManager.app'") { _ in }
-                DispatchQueue.main.async {
-                    s1.log += """
-                    
-                    
-                    ✅ Сборка завершена успешно!
-                    📂 Архив создан: \(archiveDir)/\(scheme).xcarchive
-                    📦 Приложение скопировано: \(archiveDir)/SSHManager.app
-                    """
-                }
+        steps = [
+            Step(name: "Очистка") { [weak self] in
+                [archiveDir, dmgDir].forEach { try? FileManager.default.removeItem(atPath: $0) }
+                try? FileManager.default.createDirectory(atPath: archiveDir, withIntermediateDirectories: true)
+                try? FileManager.default.createDirectory(atPath: dmgDir, withIntermediateDirectories: true)
                 return true
-            } else {
-                DispatchQueue.main.async {
-                    s1.log += """
-                    
-                    
-                    ❌ Ошибка сборки xcodebuild!
-                    \(errorLogs.isEmpty ? "Проверьте проект в Xcode на наличие ошибок компиляции." : errorLogs)
-                    """
-                }
-                return false
-            }
-        }
-
-        // MARK: Step 2 - Создание DMG
-        let s2 = Step("Создание DMG")
-        s2.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            DispatchQueue.main.async { s2.log = "💿 Подготовка структуры DMG...\n" }
-            
-            self.shell("xattr -cr '\(archiveDir)/SSHManager.app' 2>/dev/null; true") { _ in }
-            let tmp = "\(dmgDir)/tmp"
-            try? FileManager.default.createDirectory(atPath: tmp, withIntermediateDirectories: true)
-            self.shell("cp -R '\(archiveDir)/SSHManager.app' '\(tmp)/' && ln -sf /Applications '\(tmp)/Applications'") { _ in }
-            
-            if FileManager.default.fileExists(atPath: "\(projectDir)/fix_quarantine.command") {
-                self.shell("cp '\(projectDir)/fix_quarantine.command' '\(tmp)/'") { _ in }
-            }
-            
-            guard !self.isCancelled else { return false }
-            self.shell("hdiutil create -volname 'SSHManager' -srcfolder '\(tmp)' -ov -format UDZO '\(dmgPath)' 2>&1") { text in
-                s2.log += text
-            }
-            self.shell("rm -rf '\(tmp)'") { _ in }
-            
-            let exists = FileManager.default.fileExists(atPath: dmgPath)
-            if exists {
-                DispatchQueue.main.async {
-                    s2.log += "\n\n✅ Образ DMG успешно создан:\n\(dmgPath)"
-                    s2.openPath = dmgPath
-                }
-            }
-            return !self.isCancelled && exists
-        }
-
-        // MARK: Step 3 - Описание обновления
-        let s3 = Step("Описание обновления")
-        s3.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            let notesFile = "\(dmgDir)/release_notes.txt"
-            let previous = (try? String(contentsOfFile: notesFile, encoding: .utf8)) ?? "<h3>Что нового</h3>\n<ul>\n<li></li>\n</ul>"
-            try? previous.write(toFile: notesFile, atomically: true, encoding: .utf8)
-
-            DispatchQueue.main.async { s3.log = "📝 Ожидание редактирования в TextEdit..." }
-
-            // Открываем TextEdit и ждём закрытия окна
-            let script = """
-                tell app "TextEdit"
-                    activate
-                    open POSIX file "\(notesFile)"
-                    set w to window 1
-                    repeat while exists w
-                        delay 0.5
-                    end repeat
-                    quit
-                end tell
-                """
-            let task = Process()
-            task.launchPath = "/usr/bin/osascript"
-            task.arguments = ["-e", script]
-            self.currentProcess = task
-            try? task.run()
-            task.waitUntilExit()
-            self.currentProcess = nil
-
-            if let content = try? String(contentsOfFile: notesFile, encoding: .utf8) {
-                DispatchQueue.main.async { s3.log = content }
-            }
-            return !self.isCancelled && FileManager.default.fileExists(atPath: notesFile)
-        }
-
-        // MARK: Step 4 - Appcast + Push
-        let s4 = Step("Appcast + Push")
-        s4.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            let notes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
-            let size = (try? FileManager.default.attributesOfItem(atPath: dmgPath)[.size] as? Int) ?? 0
-            let downloadURL = "https://github.com/\(githubRepo)/releases/download/v\(currentVersion)/SSHManager-\(currentVersion).dmg"
-            let date = ISO8601DateFormatter().string(from: Date())
-
-            let appcast = """
+            },
+            Step(name: "Сборка") { [weak self] in
+                guard let self else { return false }
+                return self.shellOK("""
+                    xcodebuild -project '\(projectDir)/SSHManager.xcodeproj' -scheme '\(scheme)' -configuration Release -derivedDataPath '\(projectDir)/build' archive -archivePath '\(archiveDir)/\(scheme).xcarchive' CODE_SIGN_STYLE=Automatic 2>&1
+                    cp -R '\(archiveDir)/\(scheme).xcarchive/Products/Applications/SSHManager.app' '\(archiveDir)/SSHManager.app'
+                    """)
+            },
+            Step(name: "DMG") { [weak self] in
+                guard let self else { return false }
+                let tmp = "\(dmgDir)/tmp"
+                try? FileManager.default.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+                self.shell("cp -R '\(archiveDir)/SSHManager.app' '\(tmp)/' && ln -sf /Applications '\(tmp)/Applications'")
+                let ok = self.shellOK("hdiutil create -volname 'SSHManager' -srcfolder '\(tmp)' -ov -format UDZO '\(dmg)' 2>&1")
+                self.shell("rm -rf '\(tmp)'")
+                return ok
+            },
+            Step(name: "Описание") { [weak self] in
+                guard let self else { return false }
+                let file = "\(dmgDir)/release_notes.txt"
+                try? self.editorText.write(toFile: file, atomically: true, encoding: .utf8)
+                return true
+            },
+            Step(name: "Релиз") { [weak self] in
+                guard let self else { return false }
+                let notes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(ver)"
+                let size = (try? FileManager.default.attributesOfItem(atPath: dmg)[.size] as? Int) ?? 0
+                let url = "https://github.com/\(githubRepo)/releases/download/v\(ver)/SSHManager-\(ver).dmg"
+                let date = ISO8601DateFormatter().string(from: Date())
+                let appcast = """
                 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-                  <channel>
-                    <title>SSH Manager</title>
-                    <description>SSH Manager updates</description>
-                    <item>
-                      <title>Version \(currentVersion)</title>
-                      <sparkle:version>\(currentVersion)</sparkle:version>
-                      <sparkle:shortVersionString>\(currentVersion)</sparkle:shortVersionString>
+                  <channel><title>SSH Manager</title>
+                    <item><title>Version \(ver)</title>
+                      <sparkle:version>\(ver)</sparkle:version>
+                      <sparkle:shortVersionString>\(ver)</sparkle:shortVersionString>
                       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
                       <pubDate>\(date)</pubDate>
                       <description><![CDATA[\(notes)]]></description>
-                      <enclosure url="\(downloadURL)" sparkle:version="\(currentVersion)" sparkle:shortVersionString="\(currentVersion)" length="\(size)" type="application/octet-stream"/>
-                    </item>
-                  </channel>
-                </rss>
+                      <enclosure url="\(url)" sparkle:version="\(ver)" sparkle:shortVersionString="\(ver)" length="\(size)" type="application/octet-stream"/>
+                    </item></channel></rss>
                 """
-            try? appcast.write(toFile: appcastPath, atomically: true, encoding: .utf8)
-
-            var gitLogOutput = ""
-            self.shell("cp '\(appcastPath)' '\(projectDir)/appcast.xml' && cd '\(projectDir)' && git add appcast.xml && git commit -m 'Release v\(currentVersion)' && git push origin main 2>&1") { text in
-                gitLogOutput += text
-            }
-            
-            DispatchQueue.main.async {
-                s4.log = """
-                🚀 Appcast обновлен и отправлен в Git!
-                📌 Версия: v\(currentVersion)
-                
-                --- Вывод Git ---
-                \(gitLogOutput.trimmingCharacters(in: .whitespacesAndNewlines))
-                """
-            }
-            return !self.isCancelled
-        }
-
-        // MARK: Step 5 - GitHub Release
-        let s5 = Step("GitHub Release")
-        s5.action = { [weak self] in
-            guard let self = self, !self.isCancelled else { return false }
-            let htmlNotes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
-            let notes = htmlToText(htmlNotes).replacingOccurrences(of: "'", with: "'\\''")
-            let releaseURL = "https://github.com/\(githubRepo)/releases/tag/v\(currentVersion)"
-            
-            var rawOutput = ""
-            let ok = self.shellOK("gh release create 'v\(currentVersion)' --repo '\(githubRepo)' --title 'v\(currentVersion)' --notes '\(notes)' '\(dmgPath)' 2>&1") { text in
-                rawOutput += text
-            }
-            
-            DispatchQueue.main.async {
-                if ok {
-                    s5.log = """
-                    🎉 Релиз v\(currentVersion) успешно опубликован на GitHub!
-                    🔗 URL: \(releaseURL)
-                    """
-                    s5.openURL = releaseURL
-                } else {
-                    s5.log = "❌ Ошибка публикации релиза:\n\(rawOutput)"
-                }
-            }
-            return ok
-        }
-
-        steps = [s0, s1, s2, s3, s4, s5]
-        currentStep = ""
-        progress = 0
-        isRunning = false
-        isCancelled = false
-    }
-
-    /// Сброс всех полей к исходному состоянию
-    func reset() {
-        stopProcess()
-        setupSteps()
-    }
-
-    /// Прерывание работы
-    func stop() {
-        stopProcess()
-        if let step = steps.first(where: { $0.status == 1 }) {
-            step.log += "\n[Остановлено пользователем]"
-            step.done(false)
-        }
-        currentStep = "Остановлено пользователем 🛑"
-    }
-
-    private func stopProcess() {
-        isCancelled = true
-        isRunning = false
-        currentProcess?.terminate()
-        currentProcess = nil
+                try? appcast.write(toFile: "\(dmgDir)/appcast.xml", atomically: true, encoding: .utf8)
+                self.shell("cp '\(dmgDir)/appcast.xml' '\(projectDir)/appcast.xml'")
+                return self.shellOK("cd '\(projectDir)' && git add appcast.xml && git commit -m 'Release v\(ver)' && git push origin main && gh release create 'v\(ver)' --repo '\(githubRepo)' --title 'v\(ver)' --notes '\(notes)' '\(dmg)' 2>&1")
+            },
+        ]
     }
 
     func start() {
         guard !isRunning else { return }
-        setupSteps()
-        isRunning = true
-        isCancelled = false
-        runNext(0)
-    }
-
-    private func runNext(_ index: Int) {
-        guard !isCancelled else { return }
-
-        guard index < steps.count else {
-            currentStep = "Готово! ✅"
-            progress = 100
+        isRunning = true; cancelled = false; progress = 0
+        for i in steps.indices { steps[i].status = .pending; steps[i].log = "" }
+        Task {
+            for i in steps.indices {
+                if cancelled { break }
+                steps[i].status = .running
+                let ok = steps[i].action?() ?? false
+                steps[i].status = ok ? .done : .failed
+                progress = Double(i + 1) / Double(steps.count) * 100
+                if !ok { break }
+            }
             isRunning = false
-            return
-        }
-
-        let step = steps[index]
-        DispatchQueue.main.async {
-            step.start()
-            self.currentStep = step.name
-            self.progress = Double(index) / Double(self.steps.count) * 100
-        }
-
-        DispatchQueue.global().async {
-            let ok = step.action?() ?? false
-            DispatchQueue.main.async {
-                guard !self.isCancelled else { return }
-                step.done(ok)
-                self.progress = Double(index + 1) / Double(self.steps.count) * 100
-                if !ok {
-                    self.currentStep = "Ошибка на шаге: \(step.name) ❌"
-                    self.isRunning = false
-                    return
-                }
-                self.runNext(index + 1)
-            }
         }
     }
 
-    // MARK: - Shell Helpers
+    func reset() { cancelled = true; isRunning = false; setup() }
 
-    func shell(_ command: String, onLog: @escaping (String) -> Void) {
-        guard !isCancelled else { return }
-        let task = Process()
-        task.launchPath = "/bin/bash"
-        task.arguments = ["-c", command]
-        task.environment = ProcessInfo.processInfo.environment
-        task.environment?["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async {
-                    onLog(text)
-                }
-            }
-        }
-
-        currentProcess = task
-        try? task.run()
-        task.waitUntilExit()
-
-        pipe.fileHandleForReading.readabilityHandler = nil
-        let remainingData = pipe.fileHandleForReading.readDataToEndOfFile()
-        if !remainingData.isEmpty, let text = String(data: remainingData, encoding: .utf8) {
-            DispatchQueue.main.async {
-                onLog(text)
-            }
-        }
-
-        currentProcess = nil
+    private func fetchVersion() -> String {
+        let plist = "\(projectDir)/SSHManager/Info.plist"
+        let data = try? Data(contentsOf: URL(fileURLWithPath: plist))
+        let dict = data.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+        return dict?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
 
-    func shellOK(_ command: String, onLog: @escaping (String) -> Void) -> Bool {
-        guard !isCancelled else { return false }
-        let task = Process()
-        task.launchPath = "/bin/bash"
-        task.arguments = ["-c", command]
-        task.environment = ProcessInfo.processInfo.environment
-        task.environment?["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
+    @discardableResult func shell(_ cmd: String) -> String {
+        let p = Process(); p.launchPath = "/bin/bash"; p.arguments = ["-c", cmd]
+        let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+        try? p.run(); p.waitUntilExit()
+        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    }
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async {
-                    onLog(text)
-                }
-            }
-        }
-
-        currentProcess = task
-        try? task.run()
-        task.waitUntilExit()
-
-        pipe.fileHandleForReading.readabilityHandler = nil
-        let remainingData = pipe.fileHandleForReading.readDataToEndOfFile()
-        if !remainingData.isEmpty, let text = String(data: remainingData, encoding: .utf8) {
-            DispatchQueue.main.async {
-                onLog(text)
-            }
-        }
-
-        currentProcess = nil
-        return !isCancelled && task.terminationStatus == 0
+    func shellOK(_ cmd: String) -> Bool {
+        let p = Process(); p.launchPath = "/bin/bash"; p.arguments = ["-c", cmd]
+        p.environment = ProcessInfo.processInfo.environment
+        p.environment?["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
+        try? p.run(); p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 }
 
-private func promptInput(_ msg: String) -> String? {
-    let a = NSAlert(); a.messageText = msg; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Отмена")
-    let f = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-    a.accessoryView = f
-    return a.runModal() == .alertFirstButtonReturn ? f.stringValue : nil
+// MARK: - Views
+struct StepRow: View {
+    let step: Step
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: step.status == .done ? "checkmark.circle.fill" : step.status == .running ? "arrow.triangle.circlepath" : step.status == .failed ? "xmark.circle.fill" : "circle")
+                .foregroundStyle(step.status == .done ? .green : step.status == .running ? .blue : step.status == .failed ? .red : .secondary)
+            Text(step.name).font(.system(size: 12))
+            Spacer()
+        }
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
+    }
 }
-
-// MARK: - Main View
 
 struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
+    @State private var previewTab = 0
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "app.connected.to.app.below.fill")
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.tint)
-                Text("SSHManager").font(.system(size: 14, weight: .bold)).foregroundStyle(.primary)
-                Text("v\(vm.appVersion)").font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 8).padding(.vertical, 3).background(Color.primary.opacity(0.06), in: Capsule())
-                Spacer()
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            HSplitView {
+                editorView.frame(minWidth: 300)
+                previewView.frame(minWidth: 200, idealWidth: 250)
             }
-            .padding(.horizontal, 16).padding(.top, 32)
-
-            ScrollView {
-                LazyVStack(spacing: 8, pinnedViews: [.sectionHeaders]) {
-                    ForEach(vm.steps) { step in StepRow(step: step) }
-                }
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
-            }
-
-            Group {
-                if !vm.currentStep.isEmpty {
-                    Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear)
-                }
-            }
-            .padding(.horizontal, 16)
-
-            HStack {
-                if vm.isRunning {
-                    Button("Остановить") { vm.stop() }.buttonStyle(.borderedProminent).tint(.red)
-                } else {
-                    Button("Запустить") { vm.start() }.buttonStyle(.borderedProminent)
-                }
-                Button("Сбросить") { vm.reset() }
-                Spacer()
-                Button("Копировать лог") {
-                    let all = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
-                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(all, forType: .string)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-                }
-                .disabled(vm.steps.allSatisfy { $0.log.isEmpty })
-                if copied { Text("Скопировано ✓").font(.caption).foregroundColor(.green) }
-            }
-            .padding(.horizontal, 16).padding(.bottom, 12)
         }
-        .frame(width: 480, height: 420)
+        .frame(minWidth: 750, minHeight: 500)
+        .onAppear { vm.setup() }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 8) {
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(vm.steps) { StepRow(step: $0) }
+                }.padding(8)
+            }
+            if vm.isRunning {
+                ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear).padding(.horizontal, 8)
+            }
+            HStack {
+                Button(vm.isRunning ? "Стоп" : "Запустить") { vm.isRunning ? vm.reset() : vm.start() }
+                    .buttonStyle(.borderedProminent)
+                Button("Сбросить") { vm.reset() }
+            }.padding(8)
+            Button("Копировать лог") {
+                let log = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(log, forType: .string)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+            }
+            if copied { Text("✓").font(.caption).foregroundColor(.green) }
+        }
+    }
+
+    private var editorView: some View {
+        VStack(spacing: 0) {
+            Text("Редактор описания").font(.headline).padding(.horizontal).padding(.top, 8)
+            Text("- разделы, + пункты").font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            TextEditor(text: $vm.editorText)
+                .font(.system(size: 13, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+        }
+    }
+
+    private var previewView: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $previewTab) {
+                Text("HTML").tag(0)
+                Text("Текст").tag(1)
+            }.pickerStyle(.segmented).padding(8)
+            ScrollView {
+                Text(previewTab == 0 ? parseHTML(vm.editorText) : parseText(vm.editorText))
+                    .font(.system(size: 11, design: previewTab == 0 ? .monospaced : .default))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 
-// MARK: - App Entry Point
+func parseHTML(_ text: String) -> String {
+    var h = ""; var inList = false
+    for line in text.components(separatedBy: "\n") {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- ") { if inList { h += "</ul>\n"; inList = false }; h += "<h3>\(t.dropFirst(2))</h3>\n" }
+        else if t.hasPrefix("+ ") { if !inList { h += "<ul>\n"; inList = true }; h += "<li>\(t.dropFirst(2))</li>\n" }
+    }
+    if inList { h += "</ul>\n" }
+    return h
+}
 
+func parseText(_ text: String) -> String {
+    var r = ""
+    for line in text.components(separatedBy: "\n") {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- ") { r += "\n\(t.dropFirst(2))\n" }
+        else if t.hasPrefix("+ ") { r += "• \(t.dropFirst(2))\n" }
+    }
+    return r.trimmingCharacters(in: .newlines)
+}
+
+// MARK: - Entry Point
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
-
-let window = NSWindow(contentViewController: NSHostingController(rootView: ReleaseView()))
-window.title = "SSH Manager Release Builder"
-window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
-window.titlebarAppearsTransparent = true
-window.isMovableByWindowBackground = true
-window.setContentSize(NSSize(width: 480, height: 420))
-window.center()
-window.makeKeyAndOrderFront(nil)
+let w = NSWindow(contentViewController: NSHostingController(rootView: ReleaseView()))
+w.title = "SSH Manager Release Builder"
+w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+w.setContentSize(NSSize(width: 750, height: 500))
+w.center()
+w.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
 app.run()
-
-// Utility functions used by the app
-
-func htmlToText(_ html: String) -> String {
-    var text = html
-    text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
-    text = text.replacingOccurrences(of: "</p>", with: "\n")
-    text = text.replacingOccurrences(of: "</li>", with: "\n")
-    text = text.replacingOccurrences(of: "</h3>", with: "\n")
-    text = text.replacingOccurrences(of: "</ul>", with: "\n")
-    text = text.replacingOccurrences(of: "<li>", with: "• ")
-    text = text.replacingOccurrences(of: "\\s*<li>", with: "• ", options: .regularExpression)
-    text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    text = text.replacingOccurrences(of: "&amp;", with: "&")
-    text = text.replacingOccurrences(of: "&lt;", with: "<")
-    text = text.replacingOccurrences(of: "&gt;", with: ">")
-    text = text.replacingOccurrences(of: "&quot;", with: "\"")
-    while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
-}
