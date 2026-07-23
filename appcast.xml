@@ -3,15 +3,31 @@
     <title>SSH Manager</title>
     <description>SSH Manager updates</description>
     <item>
-      <title>Version 1.1.0</title>
-      <sparkle:version>1.1.0</sparkle:version>
-      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <title>Version 1.2.0</title>
+      <sparkle:version>1.2.0</sparkle:version>
+      <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <pubDate>2026-07-23T16:23:22Z</pubDate>
-      <description><![CDATA[Что нового:
-• 
-]]></description>
-      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.1.0/SSHManager-1.1.0.dmg" sparkle:version="1.1.0" sparkle:shortVersionString="1.1.0" length="3683723" type="application/octet-stream"/>
+      <pubDate>2026-07-23T16:25:56Z</pubDate>
+      <description><![CDATA[Встроенный SSH-терминал
+• Собственное окно терминала с подключением по SSH прямо из приложения
+• Больше не нужен внешний Terminal.app — всё внутри SSH Manager
+
+Сниппеты команд
+• Сохраняйте часто используемые команды для каждого сервера
+• Моментальная отправка в терминал по клику
+• Режим подтверждения для критичных команд
+• Редактирование и удаление сниппетов
+
+Импорт и экспорт SSH-конфигураций
+• Импорт хостов из ~/.ssh/config — выбирайте нужные и добавляйте одним кликом
+• Экспорт серверов обратно в SSH-конфиг с возможностью выбора файла
+• Поддержка нестандартных портов и ключей
+
+Улучшения интерфейса
+• Исправлена область нажатия у всех кнопок — теперь не нужно целиться в иконку
+• Текстовые поля с ограничением символов и счётчиками
+• Единое окно для добавления и редактирования команд]]></description>
+      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.2.0/SSHManager-1.2.0.dmg" sparkle:version="1.2.0" sparkle:shortVersionString="1.2.0" length="3681080" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
