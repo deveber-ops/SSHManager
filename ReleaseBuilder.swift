@@ -790,7 +790,7 @@ private func openHTMLEditor(initialHTML: String, completion: @escaping (String) 
     // Записываем HTML-шаблон во временный файл (нужно для работы JS в WKWebView)
     let tmpDir = FileManager.default.temporaryDirectory
     let htmlFile = tmpDir.appendingPathComponent("sparkle_editor.html")
-    try? htmlEditorTemplate.write(to: htmlFile, atomically: true, encoding: .utf8)
+    try? Data(htmlEditorTemplate.utf8).write(to: htmlFile, options: .atomic)
 
     let editor = EditorWindowController(initialHTML: initialHTML, htmlFileURL: htmlFile, completion: completion)
     editor.showWindow(nil)
