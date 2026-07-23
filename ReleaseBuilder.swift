@@ -170,7 +170,69 @@ struct StepRow: View {
 // MARK: - Shared State (editor content accessible from VM)
 class SharedState {
     static var editorHTML = ""
-    static weak var editorCoordinator: EditorTextView.Coordinator?
+}
+
+// MARK: - Editor Controller (shared between toolbar and NSTextView)
+
+class EditorController: ObservableObject {
+    weak var textView: NSTextView?
+
+    func toolAction(_ action: String) {
+        guard let tv = textView else { return }
+        let ts = tv.textStorage!
+        let sel = tv.selectedRange()
+        switch action {
+        case "B": toggleTrait(.boldFontMask, in: sel, ts: ts)
+        case "I": toggleTrait(.italicFontMask, in: sel, ts: ts)
+        case "U":
+            ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
+                ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
+            }
+        case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
+        case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
+        case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
+        case "P": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
+        case "•": tv.insertText("\n• ", replacementRange: sel)
+        case "1.": tv.insertText("\n1. ", replacementRange: sel)
+        case "☑": tv.insertText("\n☐ ", replacementRange: sel)
+        case "🔗":
+            if let url = URL(string: promptInput("URL:") ?? "https://") { ts.addAttribute(.link, value: url, range: sel) }
+        case "🖼":
+            if let url = promptInput("URL изображения:") { tv.insertText("\n[Изображение: \(url)]\n", replacementRange: sel) }
+        case "⊞": tv.insertText("\n| A | B |\n| — | — |\n| x | y |\n", replacementRange: sel)
+        case "—": tv.insertText("\n——\n", replacementRange: sel)
+        case "❝": tv.insertText("\n> ", replacementRange: sel)
+        case "<>": tv.insertText("`code`", replacementRange: sel)
+        case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
+        case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.left }, range: sel)
+        case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.center }, range: sel)
+        case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.right }, range: sel)
+        case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
+        case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
+        case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
+        default: break
+        }
+        saveHTML()
+    }
+
+    private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange, ts: NSTextStorage) {
+        guard range.length > 0 else { return }
+        ts.enumerateAttribute(.font, in: range, options: []) { v, r, _ in
+            if let font = v as? NSFont {
+                ts.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
+            }
+        }
+        saveHTML()
+    }
+
+    func saveHTML() {
+        guard let tv = textView else { return }
+        let attr = tv.attributedString()
+        if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]),
+           let str = String(data: d, encoding: .utf8) {
+            SharedState.editorHTML = str
+        }
+    }
 }
 
 // MARK: - ViewModel
@@ -596,92 +658,27 @@ extension NSMutableParagraphStyle {
 
 struct EditorTextView: NSViewRepresentable {
     @Binding var html: String
-    var onReady: ((Coordinator) -> Void)?
+    var onReady: ((NSTextView) -> Void)?
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSScrollView {
         let tv = NSTextView()
         tv.isRichText = true; tv.allowsUndo = true; tv.font = NSFont.systemFont(ofSize: 13)
-        tv.delegate = context.coordinator
         let scroll = NSScrollView()
         scroll.documentView = tv; scroll.hasVerticalScroller = true
-        context.coordinator.textView = tv
-        onReady?(context.coordinator)
 
         if let data = html.data(using: .utf8),
            let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
             tv.textStorage?.setAttributedString(attr)
         }
+        onReady?(tv)
         return scroll
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {}
 
-    class Coordinator: NSObject, NSTextViewDelegate {
-        let parent: EditorTextView
-        weak var textView: NSTextView?
-        init(_ p: EditorTextView) { self.parent = p }
-        func textDidChange(_ notification: Notification) { saveHTML() }
-
-        func toolAction(_ action: String) {
-            guard let tv = textView else { return }
-            let ts = tv.textStorage!
-            let sel = tv.selectedRange()
-            switch action {
-            case "B": toggleTrait(.boldFontMask, in: sel, ts: ts)
-            case "I": toggleTrait(.italicFontMask, in: sel, ts: ts)
-            case "U":
-                ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
-                    ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
-                }
-            case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
-            case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
-            case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
-            case "P": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
-            case "•": tv.insertText("\n• ", replacementRange: sel)
-            case "1.": tv.insertText("\n1. ", replacementRange: sel)
-            case "☑": tv.insertText("\n☐ ", replacementRange: sel)
-            case "🔗":
-                if let url = URL(string: promptInput("URL:") ?? "https://") { ts.addAttribute(.link, value: url, range: sel) }
-            case "🖼":
-                if let url = promptInput("URL изображения:") { tv.insertText("\n[Изображение: \(url)]\n", replacementRange: sel) }
-            case "⊞": tv.insertText("\n| A | B |\n| — | — |\n| x | y |\n", replacementRange: sel)
-            case "—": tv.insertText("\n——\n", replacementRange: sel)
-            case "❝": tv.insertText("\n> ", replacementRange: sel)
-            case "<>": tv.insertText("`code`", replacementRange: sel)
-            case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
-            case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.left }, range: sel)
-            case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.center }, range: sel)
-            case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = NSTextAlignment.right }, range: sel)
-            case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
-            case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
-            case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
-            default: break
-            }
-            saveHTML()
-        }
-
-        private func saveHTML() {
-            guard let tv = textView else { return }
-            let attr = tv.attributedString()
-            if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]),
-               let str = String(data: d, encoding: .utf8) {
-                parent.html = str
-                SharedState.editorHTML = str
-            }
-        }
-
-        private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange, ts: NSTextStorage) {
-            guard range.length > 0 else { return }
-            ts.enumerateAttribute(.font, in: range, options: []) { v, r, _ in
-                if let font = v as? NSFont {
-                    ts.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
-                }
-            }
-            saveHTML()
-        }
-    }
+    class Coordinator: NSObject, NSTextViewDelegate {}
 }
 
 private func promptInput(_ msg: String) -> String? {
@@ -696,6 +693,7 @@ private func promptInput(_ msg: String) -> String? {
 struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
+    @StateObject private var editorController = EditorController()
     @State private var editorHTML = SharedState.editorHTML
 
     var body: some View {
@@ -760,7 +758,7 @@ struct ReleaseView: View {
                             ForEach(toolbarGroups[gi].indices, id: \.self) { i in
                                 let item = toolbarGroups[gi][i]
                                 Button(item) {
-                                    SharedState.editorCoordinator?.toolAction(item)
+                                    editorController.toolAction(item)
                                 }
                                 .buttonStyle(.borderless)
                                 .hoverBackground(shape: Circle(), padding: 0)
@@ -775,7 +773,7 @@ struct ReleaseView: View {
             }
             .frame(height: 36)
 
-            EditorTextView(html: $editorHTML, onReady: { SharedState.editorCoordinator = $0 })
+            EditorTextView(html: $editorHTML, onReady: { editorController.textView = $0 })
                 .onChange(of: editorHTML) { _, _ in SharedState.editorHTML = editorHTML }
 
             HStack {
