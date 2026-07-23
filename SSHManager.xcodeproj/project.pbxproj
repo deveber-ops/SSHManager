@@ -201,8 +201,8 @@
 					ProjectRef = 89D6557430111C9100B2DFD6 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 89E4A0003011195E00CB5703 /* Products */;
-					ProjectRef = 89E49FFD3011195E00CB5703 /* SSHManager.xcodeproj */;
+					ProductGroup = 89155AEF30111AC200313BF9 /* Products */;
+					ProjectRef = 89155AEC30111AC200313BF9 /* SSHManager.xcodeproj */;
 				},
 				{
 					ProductGroup = 89E47E7F3011193E00CB5703 /* Products */;
@@ -217,12 +217,12 @@
 					ProjectRef = 89281B3B3011199600CA1903 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 8915324D301119B600313BF9 /* Products */;
-					ProjectRef = 8915324A301119B600313BF9 /* SSHManager.xcodeproj */;
+					ProductGroup = 89E4A0003011195E00CB5703 /* Products */;
+					ProjectRef = 89E49FFD3011195E00CB5703 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 89155AEF30111AC200313BF9 /* Products */;
-					ProjectRef = 89155AEC30111AC200313BF9 /* SSHManager.xcodeproj */;
+					ProductGroup = 8915324D301119B600313BF9 /* Products */;
+					ProjectRef = 8915324A301119B600313BF9 /* SSHManager.xcodeproj */;
 				},
 			);
 			projectRoot = "";
