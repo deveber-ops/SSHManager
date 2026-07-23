@@ -544,7 +544,7 @@ class ReleaseVM: ObservableObject {
 
 struct EditorTextView: NSViewRepresentable {
     @Binding var html: String
-    var onToolAction: ((String) -> Void)?
+    var onReady: ((Coordinator) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -555,6 +555,7 @@ struct EditorTextView: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.documentView = tv; scroll.hasVerticalScroller = true
         context.coordinator.textView = tv
+        onReady?(context.coordinator)
 
         if let data = html.data(using: .utf8),
            let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil) {
@@ -565,77 +566,68 @@ struct EditorTextView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {}
 
-    func toolAction(_ action: String) {
-        guard let tv = coordinator.textView else { return }
-        let ts = tv.textStorage!
-        let sel = tv.selectedRange()
-        switch action {
-        case "B": toggleTrait(.boldFontMask, in: sel, ts: ts)
-        case "I": toggleTrait(.italicFontMask, in: sel, ts: ts)
-        case "U":
-            ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
-                ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
-            }
-        case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
-        case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
-        case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
-        case "P": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
-        case "•": tv.insertText("\n• ", replacementRange: sel)
-        case "1.": tv.insertText("\n1. ", replacementRange: sel)
-        case "☑": tv.insertText("\n☐ ", replacementRange: sel)
-        case "🔗":
-            if let url = URL(string: promptInput("URL:") ?? "https://") { ts.addAttribute(.link, value: url, range: sel) }
-        case "🖼":
-            if let url = promptInput("URL изображения:") { tv.insertText("\n[Изображение: \(url)]\n", replacementRange: sel) }
-        case "⊞": tv.insertText("\n| A | B |\n| — | — |\n| x | y |\n", replacementRange: sel)
-        case "—": tv.insertText("\n——\n", replacementRange: sel)
-        case "❝": tv.insertText("\n> ", replacementRange: sel)
-        case "<>": tv.insertText("`code`", replacementRange: sel)
-        case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
-        case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .left }, range: sel)
-        case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .center }, range: sel)
-        case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .right }, range: sel)
-        case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
-        case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
-        case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
-        default: break
-        }
-        saveHTML()
-    }
-
-    private func saveHTML() {
-        guard let tv = coordinator.textView else { return }
-        let attr = tv.attributedString()
-        if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]) {
-            html = String(data: d, encoding: .utf8) ?? ""
-            SharedState.editorHTML = html
-        }
-    }
-
-    private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange, ts: NSTextStorage) {
-        guard range.length > 0 else { return }
-        ts.enumerateAttribute(.font, in: range, options: []) { v, r, _ in
-            if let font = v as? NSFont {
-                ts.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
-            }
-        }
-        saveHTML()
-    }
-
-    var coordinator: Coordinator { makeCoordinator() }
-    private var _coordinator: Coordinator?
-    func makeCoordinator() -> Coordinator {
-        if let c = _coordinator { return c }
-        let c = Coordinator(self)
-        _coordinator = c
-        return c
-    }
-
     class Coordinator: NSObject, NSTextViewDelegate {
         let parent: EditorTextView
         weak var textView: NSTextView?
         init(_ p: EditorTextView) { self.parent = p }
-        func textDidChange(_ notification: Notification) { parent.saveHTML() }
+        func textDidChange(_ notification: Notification) { saveHTML() }
+
+        func toolAction(_ action: String) {
+            guard let tv = textView else { return }
+            let ts = tv.textStorage!
+            let sel = tv.selectedRange()
+            switch action {
+            case "B": toggleTrait(.boldFontMask, in: sel, ts: ts)
+            case "I": toggleTrait(.italicFontMask, in: sel, ts: ts)
+            case "U":
+                ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
+                    ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
+                }
+            case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
+            case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
+            case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
+            case "P": ts.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: sel)
+            case "•": tv.insertText("\n• ", replacementRange: sel)
+            case "1.": tv.insertText("\n1. ", replacementRange: sel)
+            case "☑": tv.insertText("\n☐ ", replacementRange: sel)
+            case "🔗":
+                if let url = URL(string: promptInput("URL:") ?? "https://") { ts.addAttribute(.link, value: url, range: sel) }
+            case "🖼":
+                if let url = promptInput("URL изображения:") { tv.insertText("\n[Изображение: \(url)]\n", replacementRange: sel) }
+            case "⊞": tv.insertText("\n| A | B |\n| — | — |\n| x | y |\n", replacementRange: sel)
+            case "—": tv.insertText("\n——\n", replacementRange: sel)
+            case "❝": tv.insertText("\n> ", replacementRange: sel)
+            case "<>": tv.insertText("`code`", replacementRange: sel)
+            case "{}": tv.insertText("\n```\ncode\n```\n", replacementRange: sel)
+            case "⇤": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .left }, range: sel)
+            case "⇔": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .center }, range: sel)
+            case "⇥": ts.addAttribute(.paragraphStyle, value: NSMutableParagraphStyle().also { $0.alignment = .right }, range: sel)
+            case "🎨": ts.addAttribute(.foregroundColor, value: NSColor.red, range: sel)
+            case "◧": ts.addAttribute(.backgroundColor, value: NSColor.yellow, range: sel)
+            case "✕": ts.setAttributes([.font: NSFont.systemFont(ofSize: 13)], range: sel)
+            default: break
+            }
+            saveHTML()
+        }
+
+        private func saveHTML() {
+            guard let tv = textView else { return }
+            let attr = tv.attributedString()
+            if let d = try? attr.data(from: NSRange(location: 0, length: attr.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.html]) {
+                parent.html = String(data: d, encoding: .utf8) ?? ""
+                SharedState.editorHTML = parent.html
+            }
+        }
+
+        private func toggleTrait(_ trait: NSFontTraitMask, in range: NSRange, ts: NSTextStorage) {
+            guard range.length > 0 else { return }
+            ts.enumerateAttribute(.font, in: range, options: []) { v, r, _ in
+                if let font = v as? NSFont {
+                    ts.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: trait), range: r)
+                }
+            }
+            saveHTML()
+        }
     }
 }
 
@@ -652,7 +644,7 @@ struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
     @State private var editorHTML = SharedState.editorHTML
-    @State private var editorRef: EditorTextView?
+    @State private var editorCoordinator: EditorTextView.Coordinator?
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
@@ -671,7 +663,7 @@ struct ReleaseView: View {
                         // separator — skip
                     } else {
                         Button(item) {
-                            editorRef?.toolAction(item)
+                            editorCoordinator?.toolAction(item)
                         }
                     }
                 }
@@ -722,8 +714,7 @@ struct ReleaseView: View {
 
     private var detailView: some View {
         VStack(spacing: 8) {
-            EditorTextView(html: $editorHTML, onToolAction: nil)
-                .introspect { editorRef = $0 }
+            EditorTextView(html: $editorHTML, onReady: { editorCoordinator = $0 })
                 .onChange(of: editorHTML) { _, _ in SharedState.editorHTML = editorHTML }
 
             HStack {
@@ -739,18 +730,6 @@ struct ReleaseView: View {
         }
         .padding(.top, 8)
     }
-}
-
-// Workaround: получить ссылку на EditorTextView
-extension View {
-    func introspect(_ block: @escaping (EditorTextView?) -> Void) -> some View {
-        self.background(EditorIntrospectView(block: block))
-    }
-}
-struct EditorIntrospectView: NSViewRepresentable {
-    let block: (EditorTextView?) -> Void
-    func makeNSView(context: Context) -> NSView { NSView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 let toolbarItems: [String] = ["B","I","U","","H1","H2","H3","P","","•","1.","☑","","🔗","🖼","⊞","—","","❝","<>","{}","","⇤","⇔","⇥","","🎨","◧","✕"]
@@ -788,15 +767,4 @@ func htmlToText(_ html: String) -> String {
     text = text.replacingOccurrences(of: "&quot;", with: "\"")
     while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
-}
-
-func promptInput(_ msg: String) -> String? {
-    let a = NSAlert(); a.messageText = msg; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Отмена")
-    let f = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-    a.accessoryView = f
-    return a.runModal() == .alertFirstButtonReturn ? f.stringValue : nil
-}
-
-extension NSMutableParagraphStyle {
-    func also(_ block: (NSMutableParagraphStyle) -> Void) -> NSMutableParagraphStyle { block(self); return self }
 }
