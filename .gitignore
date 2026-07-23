@@ -1,0 +1,9 @@
+build/
+.idea/
+.qwen/
+sign_and_run.sh
+DerivedData/
+*.xcuserdata/
+.DS_Store
+release/
+archive/

@@ -1,0 +1,16 @@
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>SSH Manager</title>
+    <description>SSH Manager updates</description>
+    <item>
+      <title>Version 1.0.0</title>
+      <sparkle:version>1.0.0</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <pubDate>2026-07-23T10:41:50Z</pubDate>
+      <description><![CDATA[Первая версия приложения, читайте README.md
+]]></description>
+      <enclosure url="https://github.com/deveber-ops/SSHManager/releases/download/v1.0.0/SSHManager-1.0.0.dmg" sparkle:version="1.0.0" sparkle:shortVersionString="1.0.0" length="3403455" type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
