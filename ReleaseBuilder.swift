@@ -587,9 +587,11 @@ struct ReleaseView: View {
                 .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
             }
 
-            if !vm.currentStep.isEmpty {
-                Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear)
+            Group {
+                if !vm.currentStep.isEmpty {
+                    Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear)
+                }
             }
             .padding(.horizontal, 16)
 
