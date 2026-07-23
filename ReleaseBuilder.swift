@@ -737,41 +737,6 @@ func htmlToText(_ html: String) -> String {
 
 // MARK: - HTML Editor
 
-private let editorToolbarDef: [(String, String, String)] = [
-    ("bold", "B", "bold()"),
-    ("italic", "I", "italic()"),
-    ("underline", "U", "underline()"),
-    ("strikethrough", "S", "strikethrough()"),
-    ("", "", ""),
-    ("h1", "H1", "setHeading(1)"),
-    ("h2", "H2", "setHeading(2)"),
-    ("h3", "H3", "setHeading(3)"),
-    ("para", "¶", "setParagraph()"),
-    ("", "", ""),
-    ("bullet", "•", "insertBulletList()"),
-    ("numbered", "1.", "insertNumberedList()"),
-    ("task", "☑", "insertTaskList()"),
-    ("", "", ""),
-    ("link", "🔗", "insertLink()"),
-    ("image", "🖼", "insertImage()"),
-    ("table", "⊞", "insertTable()"),
-    ("hr", "—", "insertHr()"),
-    ("", "", ""),
-    ("quote", "❝", "setBlockquote()"),
-    ("code", "<>", "inlineCode()"),
-    ("pre", "{}", "setPre()"),
-    ("", "", ""),
-    ("left", "⇤", "alignLeft()"),
-    ("center", "⇔", "alignCenter()"),
-    ("right", "⇥", "alignRight()"),
-    ("", "", ""),
-    ("color", "🎨", "setForeColor()"),
-    ("bg", "◧", "setBackColor()"),
-    ("clear", "✕", "clearFormatting()"),
-    ("", "", ""),
-    ("source", "⟨⟩", "toggleSource()"),
-]
-
 private func loadHTMLEditorTemplate() -> String {
     let candidates = [
         "\(projectDir)/SSHManager/Resources/html_editor.html",
@@ -898,35 +863,67 @@ private class EditorWindowController: NSObject, NSToolbarDelegate, WKNavigationD
 
     // NSToolbarDelegate
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard let idx = Int(itemIdentifier.rawValue), idx >= 0, idx < editorToolbarDef.count else { return nil }
-        let info = editorToolbarDef[idx]
-        if info.1.isEmpty { return nil }
+        let tools = toolbarItems()
+        guard let info = tools.first(where: { $0.id == itemIdentifier.rawValue }) else { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = info.0
-        item.toolTip = info.0
+        item.label = info.id
+        item.toolTip = info.id
         let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 32, height: 24))
-        btn.title = info.1
+        btn.title = info.title
         btn.bezelStyle = .toolbar
         btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         btn.target = self
         btn.action = #selector(tbAction(_:))
-        btn.tag = idx
+        btn.toolTipJob = info.js
         item.view = btn
+        weak var w = btn
+        // store js in representedObject
+        objc_setAssociatedObject(btn, UnsafeRawPointer(bitPattern: 1)!, info.js as NSString, .OBJC_ASSOCIATION_RETAIN)
         return item
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        editorToolbarDef.indices.map { NSToolbarItem.Identifier("\($0)") }
+        toolbarItems().map { NSToolbarItem.Identifier($0.id) }
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        editorToolbarDef.indices.map { NSToolbarItem.Identifier("\($0)") }
+        toolbarItems().map { NSToolbarItem.Identifier($0.id) }
     }
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
 
     @objc private func tbAction(_ sender: NSButton) {
-        let idx = sender.tag
-        guard idx >= 0, idx < editorToolbarDef.count else { return }
-        let js = editorToolbarDef[idx].2
-        if !js.isEmpty { wv.evaluateJavaScript(js) }
+        guard let js = objc_getAssociatedObject(sender, UnsafeRawPointer(bitPattern: 1)!) as? String else { return }
+        wv.evaluateJavaScript(js)
     }
+}
+
+private struct ToolInfo { let id: String; let title: String; let js: String }
+
+private func toolbarItems() -> [ToolInfo] {
+    [
+        ToolInfo(id: "bold", title: "B", js: "bold()"),
+        ToolInfo(id: "italic", title: "I", js: "italic()"),
+        ToolInfo(id: "underline", title: "U", js: "underline()"),
+        ToolInfo(id: "strike", title: "S", js: "strikethrough()"),
+        ToolInfo(id: "h1", title: "H1", js: "setHeading(1)"),
+        ToolInfo(id: "h2", title: "H2", js: "setHeading(2)"),
+        ToolInfo(id: "h3", title: "H3", js: "setHeading(3)"),
+        ToolInfo(id: "para", title: "¶", js: "setParagraph()"),
+        ToolInfo(id: "bullet", title: "•", js: "insertBulletList()"),
+        ToolInfo(id: "num", title: "1.", js: "insertNumberedList()"),
+        ToolInfo(id: "task", title: "☑", js: "insertTaskList()"),
+        ToolInfo(id: "link", title: "🔗", js: "insertLink()"),
+        ToolInfo(id: "image", title: "🖼", js: "insertImage()"),
+        ToolInfo(id: "table", title: "⊞", js: "insertTable()"),
+        ToolInfo(id: "hr", title: "—", js: "insertHr()"),
+        ToolInfo(id: "quote", title: "❝", js: "setBlockquote()"),
+        ToolInfo(id: "code", title: "<>", js: "inlineCode()"),
+        ToolInfo(id: "pre", title: "{}", js: "setPre()"),
+        ToolInfo(id: "left", title: "⇤", js: "alignLeft()"),
+        ToolInfo(id: "center", title: "⇔", js: "alignCenter()"),
+        ToolInfo(id: "right", title: "⇥", js: "alignRight()"),
+        ToolInfo(id: "color", title: "🎨", js: "setForeColor()"),
+        ToolInfo(id: "bg", title: "◧", js: "setBackColor()"),
+        ToolInfo(id: "clear", title: "✕", js: "clearFormatting()"),
+        ToolInfo(id: "source", title: "⟨⟩", js: "toggleSource()"),
+    ]
 }
