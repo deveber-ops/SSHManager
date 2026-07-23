@@ -926,12 +926,14 @@ private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMe
     private func updatePreviews(html: String) {
         guard let tabView = tabView else { return }
         // HTML preview
-        if let previewWV = (tabView.tabViewItem(at: 1)?.view as? WKWebView) {
+        let previewItem = tabView.tabViewItem(at: 1)
+        if let previewWV = previewItem.view as? WKWebView {
             let styled = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px;color:#1d1d1d;}h3{font-size:15px;margin:0 0 4px;}ul{padding-left:24px;}li{margin:2px 0;}</style></head><body>\(html)</body></html>"
-            previewWV.loadHTMLString(styled, baseURL: nil)
+            previewWV.loadHTMLString(styled, baseURL: URL(string: "about:blank"))
         }
         // Text preview
-        if let textScroll = (tabView.tabViewItem(at: 2)?.view as? NSScrollView),
+        let textItem = tabView.tabViewItem(at: 2)
+        if let textScroll = textItem.view as? NSScrollView,
            let textView = textScroll.documentView as? NSTextView {
             textView.string = htmlToText(html)
         }
