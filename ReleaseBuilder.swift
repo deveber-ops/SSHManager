@@ -169,7 +169,7 @@ struct StepRow: View {
 
 // MARK: - Shared State (editor content accessible from VM)
 class SharedState {
-    static var editorHTML = "<h3>Что нового</h3>\n<ul>\n<li></li>\n</ul>"
+    static var editorHTML = ""
 }
 
 // MARK: - ViewModel
@@ -562,7 +562,7 @@ struct EditorTextView: NSViewRepresentable {
         onReady?(context.coordinator)
 
         if let data = html.data(using: .utf8),
-           let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil) {
+           let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
             tv.textStorage?.setAttributedString(attr)
         }
         return scroll
@@ -659,20 +659,6 @@ struct ReleaseView: View {
         }
         .navigationSplitViewStyle(.prominentDetail)
         .frame(minWidth: 850, minHeight: 600)
-        .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                ForEach(toolbarItems.indices, id: \.self) { i in
-                    let item = toolbarItems[i]
-                    if item.isEmpty {
-                        // separator — skip
-                    } else {
-                        Button(item) {
-                            editorCoordinator?.toolAction(item)
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private var sidebar: some View {
@@ -718,6 +704,27 @@ struct ReleaseView: View {
 
     private var detailView: some View {
         VStack(spacing: 8) {
+            // Хедер с кнопками форматирования
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    ForEach(toolbarItems.indices, id: \.self) { i in
+                        let item = toolbarItems[i]
+                        if item.isEmpty {
+                            Rectangle().frame(width: 1, height: 20).foregroundStyle(.separator).padding(.horizontal, 4)
+                        } else {
+                            Button(item) {
+                                editorCoordinator?.toolAction(item)
+                            }
+                            .buttonStyle(.borderless)
+                            .frame(width: 30, height: 26)
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+            .frame(height: 30)
+            .background(Color.primary.opacity(0.04))
+
             EditorTextView(html: $editorHTML, onReady: { editorCoordinator = $0 })
                 .onChange(of: editorHTML) { _, _ in SharedState.editorHTML = editorHTML }
 
