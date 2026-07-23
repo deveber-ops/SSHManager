@@ -144,6 +144,11 @@ struct SSHConfigExchangeView: View {
                                     .foregroundStyle(.tertiary)
                                     .lineLimit(1)
                             }
+                            if !host.tunnels.isEmpty {
+                                Text("Туннелей: \(host.tunnels.count)")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                 }
@@ -352,7 +357,7 @@ struct SSHConfigExchangeView: View {
         let toImport = importHosts.filter { importSelectedIDs.contains($0.id) }
         guard !toImport.isEmpty else { return }
         for host in toImport {
-            let server = SSHServer(
+            var server = SSHServer(
                 name: host.host,
                 sshHost: host.hostName,
                 sshPort: host.port,
@@ -360,6 +365,14 @@ struct SSHConfigExchangeView: View {
                 authType: host.identityFile.isEmpty ? .password : .key,
                 sshKeyPath: host.identityFile
             )
+            server.tunnels = host.tunnels.map { t in
+                TunnelConnection(
+                    name: "\(t.remoteHost):\(t.remotePort)",
+                    localPort: t.localPort,
+                    remoteHost: t.remoteHost,
+                    remotePort: t.remotePort
+                )
+            }
             configManager.servers.append(server)
         }
         configManager.saveConnections()

@@ -21,6 +21,10 @@ enum SSHConfigExporter {
             if server.authType == .key && !server.sshKeyPath.isEmpty {
                 lines.append("    IdentityFile \(server.sshKeyPath)")
             }
+            for tunnel in server.tunnels where tunnel.isValid {
+                let local = tunnel.effectiveLocalPort
+                lines.append("    LocalForward \(local) \(tunnel.remoteHost):\(tunnel.remotePort)")
+            }
             entries.append(lines.joined(separator: "\n"))
         }
         return entries.joined(separator: "\n\n") + "\n"
