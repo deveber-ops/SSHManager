@@ -167,7 +167,41 @@ struct StepRow: View {
     }
 }
 
-// MARK: - ViewModel
+// MARK: - Release Notes parser/generator
+
+func parseAndGenerateHTML(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    var html = ""
+    var inList = false
+    for line in lines {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- ") {
+            if inList { html += "</ul>\n"; inList = false }
+            html += "<h3>\(String(t.dropFirst(2)))</h3>\n"
+        } else if t.hasPrefix("+ ") {
+            if !inList { html += "<ul>\n"; inList = true }
+            html += "<li>\(String(t.dropFirst(2)))</li>\n"
+        }
+    }
+    if inList { html += "</ul>\n" }
+    return html
+}
+
+func parseAndGenerateText(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    var result = ""
+    for line in lines {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- ") {
+            result += "\n\(String(t.dropFirst(2)))\n"
+        } else if t.hasPrefix("+ ") {
+            result += "• \(String(t.dropFirst(2)))\n"
+        }
+    }
+    return result.trimmingCharacters(in: .newlines)
+}
+
+// MARK: - ViewModel (simplified)
 
 class ReleaseVM: ObservableObject {
     @Published var steps: [Step] = []
@@ -175,6 +209,7 @@ class ReleaseVM: ObservableObject {
     @Published var progress: Double = 0
     @Published var appVersion: String = ""
     @Published var isRunning = false
+    @Published var editorText = "- Что нового\n+ \n"
 
     private var isCancelled = false
     private var currentProcess: Process?
@@ -305,35 +340,14 @@ class ReleaseVM: ObservableObject {
         s3.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
             let notesFile = "\(dmgDir)/release_notes.txt"
-            let previous = (try? String(contentsOfFile: notesFile, encoding: .utf8)) ?? "<h3>Что нового</h3>\n<ul>\n<li></li>\n</ul>"
-            try? previous.write(toFile: notesFile, atomically: true, encoding: .utf8)
-
-            DispatchQueue.main.async { s3.log = "📝 Ожидание редактирования в TextEdit..." }
-
-            // Открываем TextEdit и ждём закрытия окна
-            let script = """
-                tell app "TextEdit"
-                    activate
-                    open POSIX file "\(notesFile)"
-                    set w to window 1
-                    repeat while exists w
-                        delay 0.5
-                    end repeat
-                    quit
-                end tell
-                """
-            let task = Process()
-            task.launchPath = "/usr/bin/osascript"
-            task.arguments = ["-e", script]
-            self.currentProcess = task
-            try? task.run()
-            task.waitUntilExit()
-            self.currentProcess = nil
-
-            if let content = try? String(contentsOfFile: notesFile, encoding: .utf8) {
-                DispatchQueue.main.async { s3.log = content }
+            let html = parseAndGenerateHTML(self.editorText)
+            if html.isEmpty {
+                DispatchQueue.main.async { s3.log = "⚠️ Заполните описание обновления" }
+                return false
             }
-            return !self.isCancelled && FileManager.default.fileExists(atPath: notesFile)
+            try? html.write(toFile: notesFile, atomically: true, encoding: .utf8)
+            DispatchQueue.main.async { s3.log = "✅ Описание сохранено" }
+            return true
         }
 
         // MARK: Step 4 - Appcast + Push
@@ -567,54 +581,97 @@ private func promptInput(_ msg: String) -> String? {
 struct ReleaseView: View {
     @StateObject private var vm = ReleaseVM()
     @State private var copied = false
+    @State private var previewTab = 0
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "app.connected.to.app.below.fill")
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(.tint)
-                Text("SSHManager").font(.system(size: 14, weight: .bold)).foregroundStyle(.primary)
-                Text("v\(vm.appVersion)").font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 8).padding(.vertical, 3).background(Color.primary.opacity(0.06), in: Capsule())
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
+        } detail: {
+            editorWithPreview
+        }
+        .navigationSplitViewStyle(.prominentDetail)
+        .frame(minWidth: 800, minHeight: 550)
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "app.connected.to.app.below.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tint)
+                Text("SSHManager").font(.system(size: 11, weight: .bold))
+                Text("v\(vm.appVersion)").font(.system(size: 8, design: .monospaced)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.06), in: Capsule())
                 Spacer()
-            }
-            .padding(.horizontal, 16).padding(.top, 32)
+            }.padding(.horizontal, 8).padding(.top, 6)
 
             ScrollView {
-                LazyVStack(spacing: 8, pinnedViews: [.sectionHeaders]) {
-                    ForEach(vm.steps) { step in StepRow(step: step) }
-                }
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
+                LazyVStack(spacing: 4) { ForEach(vm.steps) { StepRow(step: $0) } }.padding(.horizontal, 4)
             }
 
-            Group {
-                if !vm.currentStep.isEmpty {
-                    Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear)
-                }
+            if !vm.currentStep.isEmpty {
+                Text(vm.currentStep).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 6)
+                ProgressView(value: vm.progress, total: 100).progressViewStyle(.linear).padding(.horizontal, 6)
             }
-            .padding(.horizontal, 16)
 
             HStack {
                 if vm.isRunning {
-                    Button("Остановить") { vm.stop() }.buttonStyle(.borderedProminent).tint(.red)
+                    Button("Стоп") { vm.stop() }.buttonStyle(.borderedProminent).tint(.red).controlSize(.small)
                 } else {
-                    Button("Запустить") { vm.start() }.buttonStyle(.borderedProminent)
+                    Button("Запустить") { vm.start() }.buttonStyle(.borderedProminent).controlSize(.small)
                 }
-                Button("Сбросить") { vm.reset() }
-                Spacer()
-                Button("Копировать лог") {
-                    let all = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
-                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(all, forType: .string)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-                }
-                .disabled(vm.steps.allSatisfy { $0.log.isEmpty })
-                if copied { Text("Скопировано ✓").font(.caption).foregroundColor(.green) }
+                Button("Сброс") { vm.reset() }.controlSize(.small)
+            }.padding(.horizontal, 6)
+
+            Button("Копировать лог") {
+                let all = vm.steps.map { "\($0.name):\n\($0.log)" }.joined(separator: "\n\n")
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(all, forType: .string)
+                copied = true; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+            }.disabled(vm.steps.allSatisfy { $0.log.isEmpty }).controlSize(.small)
+            if copied { Text("✓").font(.caption).foregroundColor(.green) }
+            Spacer()
+        }.padding(.bottom, 6)
+    }
+
+    private var editorWithPreview: some View {
+        HSplitView {
+            // Редактор
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Редактор описания").font(.headline)
+                    Text("— разделы, + пункты").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }.padding(.horizontal).padding(.top, 10).padding(.bottom, 4)
+
+                TextEditor(text: $vm.editorText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(Color(nsColor: .textBackgroundColor))
             }
-            .padding(.horizontal, 16).padding(.bottom, 12)
+            .frame(minWidth: 300)
+
+            // Превью
+            VStack(spacing: 0) {
+                Picker("", selection: $previewTab) {
+                    Text("HTML").tag(0); Text("Текст").tag(1)
+                }.pickerStyle(.segmented).padding(.horizontal).padding(.top, 10).padding(.bottom, 4)
+
+                if previewTab == 0 {
+                    ScrollView {
+                        Text(parseAndGenerateHTML(vm.editorText))
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                            .padding().frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    ScrollView {
+                        Text(parseAndGenerateText(vm.editorText))
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .padding().frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .frame(minWidth: 250, idealWidth: 300)
         }
-        .frame(width: 480, height: 420)
     }
 }
 
@@ -625,16 +682,13 @@ app.setActivationPolicy(.regular)
 
 let window = NSWindow(contentViewController: NSHostingController(rootView: ReleaseView()))
 window.title = "SSH Manager Release Builder"
-window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
 window.titlebarAppearsTransparent = true
-window.isMovableByWindowBackground = true
-window.setContentSize(NSSize(width: 480, height: 420))
+window.setContentSize(NSSize(width: 850, height: 600))
 window.center()
 window.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
 app.run()
-
-// Utility functions used by the app
 
 func htmlToText(_ html: String) -> String {
     var text = html
