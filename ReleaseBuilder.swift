@@ -339,7 +339,8 @@ class ReleaseVM: ObservableObject {
         let s4 = Step("Appcast + Push")
         s4.action = { [weak self] in
             guard let self = self, !self.isCancelled else { return false }
-            let notes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
+            let rawNotes = (try? String(contentsOfFile: "\(dmgDir)/release_notes.txt", encoding: .utf8)) ?? "v\(currentVersion)"
+            let notes = convertToHTML(rawNotes)
             let size = (try? FileManager.default.attributesOfItem(atPath: dmgPath)[.size] as? Int) ?? 0
             let downloadURL = "https://github.com/\(githubRepo)/releases/download/v\(currentVersion)/SSHManager-\(currentVersion).dmg"
             let date = ISO8601DateFormatter().string(from: Date())
@@ -665,3 +666,40 @@ window.center()
 window.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
 app.run()
+
+// MARK: - Plain text to HTML converter for Sparkle release notes
+func convertToHTML(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    var result = ""
+    var inList = false
+    for line in lines {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            if inList {
+                result += "</ul>\n"
+                inList = false
+            }
+            continue
+        }
+        // Bullet points
+        if trimmed.hasPrefix("•") || trimmed.hasPrefix("-") {
+            if !inList {
+                result += "<ul>\n"
+                inList = true
+            }
+            let item = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
+            result += "<li>\(item)</li>\n"
+        } else {
+            if inList {
+                result += "</ul>\n"
+                inList = false
+            }
+            // Section header
+            result += "<h3>\(trimmed)</h3>\n"
+        }
+    }
+    if inList {
+        result += "</ul>\n"
+    }
+    return result.trimmingCharacters(in: .newlines)
+}
