@@ -32,7 +32,7 @@
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "cd /Users/deveber/PROJECTS/SSHManager && swiftc -O ReleaseBuilder.swift -o /tmp/rb && /tmp/rb"
+            argument = "cd /Users/deveber/PROJECTS/SSHManager && swiftc -O -framework SwiftUI -framework AppKit ReleaseBuilder.swift -o /tmp/rb && /tmp/rb"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
