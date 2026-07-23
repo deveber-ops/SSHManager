@@ -731,66 +731,29 @@ func htmlToText(_ html: String) -> String {
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-// MARK: - HTML Editor (embedded for standalone script)
+// MARK: - HTML Editor
 
-private let htmlEditorTemplate = """
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><style>
-:root { --bg: #f5f5f5; --toolbar-bg: #e8e8e8; --text: #1d1d1d; --border: #c8c8c8; --btn-hover: #d8d8d8; --editor-bg: #ffffff; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; flex-direction: column; height: 100vh; user-select: none; }
-#toolbar { display: flex; gap: 4px; padding: 8px 12px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-#toolbar button { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 5px 9px; cursor: pointer; font-size: 13px; color: var(--text); }
-#toolbar button:hover { background: var(--btn-hover); border-color: var(--border); }
-#toolbar button.active { background: #c0c0c0; border-color: #aaa; }
-#toolbar .sep { width: 1px; background: var(--border); margin: 0 4px; }
-#editor { flex: 1; padding: 16px 20px; background: var(--editor-bg); outline: none; font-size: 14px; line-height: 1.6; color: var(--text); overflow-y: auto; }
-#editor h1 { font-size: 20px; margin: 0 0 8px; font-weight: 700; }
-#editor h2 { font-size: 17px; margin: 0 0 6px; font-weight: 600; }
-#editor h3 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
-#editor ul, #editor ol { padding-left: 24px; margin: 4px 0; }
-#editor li { margin: 2px 0; }
-#editor p { margin: 0 0 6px; }
-#status { padding: 2px 12px; font-size: 11px; color: #999; background: var(--toolbar-bg); border-top: 1px solid var(--border); }
-</style></head><body>
-<div id="toolbar">
-<button onclick="exec('bold')" title="Bold (⌘B)"><b>B</b></button>
-<button onclick="exec('italic')" title="Italic (⌘I)"><i>I</i></button>
-<span class="sep"></span>
-<button onclick="exec('formatBlock','h3')" title="Heading"><b>H</b></button>
-<button onclick="exec('insertUnorderedList')" title="List">•</button>
-<span class="sep"></span>
-<button onclick="exec('undo')" title="Undo (⌘Z)">↩</button>
-<button onclick="exec('redo')" title="Redo (⌘⇧Z)">↪</button>
-</div>
-<div id="editor" contenteditable="true"></div>
-<div id="status">Ready</div>
-<script>
-const editor = document.getElementById('editor');
-function exec(cmd, arg) { document.execCommand(cmd, false, arg || null); editor.focus(); updateToolbar(); }
-function updateToolbar() {
-  document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
-  if (document.queryCommandState('bold')) document.querySelector('[onclick*="bold"]').classList.add('active');
-  if (document.queryCommandState('italic')) document.querySelector('[onclick*="italic"]').classList.add('active');
+private func loadHTMLEditorTemplate() -> String {
+    // Ищем html_editor.html рядом со скриптом или в проекте
+    let candidates = [
+        "\(projectDir)/SSHManager/Resources/html_editor.html",
+        "\(projectDir)/html_editor.html",
+    ]
+    for path in candidates {
+        if FileManager.default.fileExists(atPath: path),
+           let content = try? String(contentsOfFile: path, encoding: .utf8) {
+            return content
+        }
+    }
+    // Фолбэк — минимальный редактор
+    return "<html><body style='font-family:sans-serif;padding:20px'><div id='editor' contenteditable style='min-height:300px;outline:none;font-size:14px'></div><script>const e=document.getElementById('editor');function setContent(h){e.innerHTML=h;}function getContent(){return e.innerHTML.trim();}</script></body></html>"
 }
-editor.addEventListener('keydown', e => {
-  if (e.metaKey && e.key === 'b') { e.preventDefault(); exec('bold'); }
-  if (e.metaKey && e.key === 'i') { e.preventDefault(); exec('italic'); }
-  if (e.metaKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); exec('undo'); }
-  if (e.metaKey && e.key === 'z' && e.shiftKey) { e.preventDefault(); exec('redo'); }
-});
-editor.addEventListener('input', () => { window.webkit.messageHandlers.contentChanged.postMessage(editor.innerHTML.trim()); });
-editor.addEventListener('click', updateToolbar);
-editor.addEventListener('keyup', updateToolbar);
-function setContent(html) { editor.innerHTML = html; editor.focus(); }
-function getContent() { return editor.innerHTML.trim(); }
-</script></body></html>
-"""
 
 private func openHTMLEditor(initialHTML: String, completion: @escaping (String) -> Void) {
-    // Записываем HTML-шаблон во временный файл (нужно для работы JS в WKWebView)
+    let template = loadHTMLEditorTemplate()
     let tmpDir = FileManager.default.temporaryDirectory
     let htmlFile = tmpDir.appendingPathComponent("sparkle_editor.html")
-    try? Data(htmlEditorTemplate.utf8).write(to: htmlFile, options: .atomic)
+    try? template.write(to: htmlFile, atomically: true, encoding: .utf8)
 
     let editor = EditorWindowController(initialHTML: initialHTML, htmlFileURL: htmlFile, completion: completion)
     editor.showWindow(nil)
