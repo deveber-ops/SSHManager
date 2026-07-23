@@ -40,6 +40,16 @@ struct ServerRowView: View {
                 .buttonStyle(.plain)
                 .hoverBackground(shape: Circle(), padding: 0)
 
+                Button(action: { openTerminalWindow(for: server) }) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .hoverBackground(shape: Circle(), padding: 0)
+                .disabled(server.sshHost.isEmpty || server.sshUser.isEmpty)
+
                 Button(role: .destructive) {
                     configManager.servers.removeAll { $0.id == server.id }
                     configManager.saveConnections()

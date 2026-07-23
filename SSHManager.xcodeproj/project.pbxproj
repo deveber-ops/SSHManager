@@ -201,8 +201,8 @@
 					ProjectRef = 89D6557430111C9100B2DFD6 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 89E4A0003011195E00CB5703 /* Products */;
-					ProjectRef = 89E49FFD3011195E00CB5703 /* SSHManager.xcodeproj */;
+					ProductGroup = 8925C37E3011197E00D3262D /* Products */;
+					ProjectRef = 8925C37B3011197E00D3262D /* SSHManager.xcodeproj */;
 				},
 				{
 					ProductGroup = 89E47E7F3011193E00CB5703 /* Products */;
@@ -217,12 +217,12 @@
 					ProjectRef = 89155AEC30111AC200313BF9 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 8915324D301119B600313BF9 /* Products */;
-					ProjectRef = 8915324A301119B600313BF9 /* SSHManager.xcodeproj */;
+					ProductGroup = 89E4A0003011195E00CB5703 /* Products */;
+					ProjectRef = 89E49FFD3011195E00CB5703 /* SSHManager.xcodeproj */;
 				},
 				{
-					ProductGroup = 8925C37E3011197E00D3262D /* Products */;
-					ProjectRef = 8925C37B3011197E00D3262D /* SSHManager.xcodeproj */;
+					ProductGroup = 8915324D301119B600313BF9 /* Products */;
+					ProjectRef = 8915324A301119B600313BF9 /* SSHManager.xcodeproj */;
 				},
 			);
 			projectRoot = "";
@@ -409,7 +409,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1.0.0;
+				CURRENT_PROJECT_VERSION = 1.1.0;
 				DEVELOPMENT_TEAM = 84T66K48K2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -427,7 +427,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = deveber.sshmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -453,7 +453,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1.0.0;
+				CURRENT_PROJECT_VERSION = 1.1.0;
 				DEVELOPMENT_TEAM = 84T66K48K2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -472,7 +472,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = deveber.sshmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
