@@ -24,15 +24,15 @@
       allowLocationSimulation = "NO">
       <PathRunnable
          runnableDebuggingMode = "0"
-         FilePath = "/usr/bin/env">
+         FilePath = "/bin/bash">
       </PathRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "swift"
+            argument = "-c"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "$(PROJECT_DIR)/ReleaseBuilder.swift"
+            argument = "swift ~/PROJECTS/SSHManager/ReleaseBuilder.swift"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
