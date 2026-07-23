@@ -24,11 +24,15 @@
       allowLocationSimulation = "NO">
       <PathRunnable
          runnableDebuggingMode = "0"
-         FilePath = "/usr/bin/swift">
+         FilePath = "/bin/bash">
       </PathRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "/Users/deveber/PROJECTS/SSHManager/ReleaseBuilder.swift"
+            argument = "-c"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "swiftc /Users/deveber/PROJECTS/SSHManager/ReleaseBuilder.swift -o /tmp/releasebuilder -sdk $(xcrun --show-sdk-path) -target arm64-apple-macos26.0 && /tmp/releasebuilder"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
