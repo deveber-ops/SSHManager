@@ -2,113 +2,203 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  :root {
-    --bg: #f5f5f5;
-    --toolbar-bg: #e8e8e8;
-    --text: #1d1d1d;
-    --border: #c8c8c8;
-    --btn-hover: #d8d8d8;
-    --editor-bg: #ffffff;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg);
-    display: flex; flex-direction: column; height: 100vh;
-    user-select: none;
-  }
-  #toolbar {
-    display: flex; gap: 4px; padding: 8px 12px;
-    background: var(--toolbar-bg);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
-  #toolbar button {
-    background: transparent; border: 1px solid transparent;
-    border-radius: 5px; padding: 5px 9px; cursor: pointer;
-    font-size: 13px; color: var(--text);
-    display: flex; align-items: center; gap: 2px;
-  }
-  #toolbar button:hover { background: var(--btn-hover); border-color: var(--border); }
-  #toolbar button.active { background: #c0c0c0; border-color: #aaa; }
-  #toolbar .sep { width: 1px; background: var(--border); margin: 0 4px; }
-  #editor {
-    flex: 1; padding: 16px 20px; background: var(--editor-bg);
-    border: none; outline: none; font-size: 14px; line-height: 1.6;
-    color: var(--text); overflow-y: auto;
-  }
-  #editor h1 { font-size: 20px; margin: 0 0 8px 0; font-weight: 700; }
-  #editor h2 { font-size: 17px; margin: 0 0 6px 0; font-weight: 600; }
-  #editor h3 { font-size: 15px; margin: 0 0 4px 0; font-weight: 600; }
-  #editor ul, #editor ol { padding-left: 24px; margin: 4px 0; }
-  #editor li { margin: 2px 0; }
-  #editor p { margin: 0 0 6px 0; }
-  #status {
-    padding: 2px 12px; font-size: 11px; color: #999;
-    background: var(--toolbar-bg); border-top: 1px solid var(--border);
-  }
+:root {
+  --bg: #f5f5f5; --toolbar-bg: #e8e8e8; --text: #1d1d1d;
+  --border: #c8c8c8; --btn-hover: #d8d8d8; --editor-bg: #ffffff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg); display: flex; flex-direction: column; height: 100vh;
+}
+#editor {
+  flex: 1; padding: 20px 24px; background: var(--editor-bg);
+  outline: none; font-size: 14px; line-height: 1.6; color: var(--text); overflow-y: auto;
+}
+#editor h1 { font-size: 22px; margin: 0 0 10px; font-weight: 700; }
+#editor h2 { font-size: 18px; margin: 0 0 8px; font-weight: 600; }
+#editor h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+#editor h4 { font-size: 14px; margin: 0 0 4px; font-weight: 600; }
+#editor ul, #editor ol { padding-left: 24px; margin: 6px 0; }
+#editor li { margin: 3px 0; }
+#editor p { margin: 0 0 8px; }
+#editor blockquote { border-left: 3px solid #ccc; padding-left: 12px; margin: 8px 0; color: #555; }
+#editor pre { background: #f0f0f0; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 13px; overflow-x: auto; margin: 8px 0; }
+#editor code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 13px; }
+#editor pre code { background: none; padding: 0; }
+#editor table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+#editor th, #editor td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+#editor th { background: #f5f5f5; font-weight: 600; }
+#editor hr { border: none; border-top: 1px solid #ddd; margin: 12px 0; }
+#editor .task-list { list-style: none; padding-left: 4px; }
+#editor .task-list li { display: flex; align-items: center; gap: 6px; }
+#editor .task-list input { margin: 0; }
+#editor sup, #editor sub { font-size: 0.8em; }
+#sourceView {
+  flex: 1; padding: 16px; font-family: monospace; font-size: 13px;
+  border: none; outline: none; resize: none; background: #1e1e1e; color: #d4d4d4;
+  display: none;
+}
 </style>
 </head>
 <body>
-<div id="toolbar">
-  <button onclick="exec('bold')" title="Жирный (⌘B)"><b>B</b></button>
-  <button onclick="exec('italic')" title="Курсив (⌘I)"><i>I</i></button>
-  <span class="sep"></span>
-  <button onclick="exec('formatBlock', 'h3')" title="Заголовок"><b>H</b></button>
-  <button onclick="exec('insertUnorderedList')" title="Список">•</button>
-  <span class="sep"></span>
-  <button onclick="exec('undo')" title="Отменить (⌘Z)">↩</button>
-  <button onclick="exec('redo')" title="Повторить (⌘⇧Z)">↪</button>
-</div>
 <div id="editor" contenteditable="true"></div>
-<div id="status">Готово</div>
+<textarea id="sourceView" spellcheck="false"></textarea>
 
 <script>
-  const editor = document.getElementById('editor');
+const editor = document.getElementById('editor');
+const sourceView = document.getElementById('sourceView');
+let isSourceMode = false;
 
-  function exec(cmd, arg) {
-    document.execCommand(cmd, false, arg || null);
+function exec(cmd, arg) {
+  if (isSourceMode) return;
+  document.execCommand(cmd, false, arg || null);
+  editor.focus();
+  notifyChange();
+}
+
+// Форматирование текста
+function bold() { exec('bold'); }
+function italic() { exec('italic'); }
+function underline() { exec('underline'); }
+function strikethrough() { exec('strikeThrough'); }
+function superscript() { exec('superscript'); }
+function subscript() { exec('subscript'); }
+function clearFormatting() { exec('removeFormat'); }
+
+// Заголовки и блоки
+function setHeading(level) { exec('formatBlock', 'h' + level); }
+function setParagraph() { exec('formatBlock', 'p'); }
+function setBlockquote() { exec('formatBlock', 'blockquote'); }
+function setPre() { exec('formatBlock', 'pre'); }
+
+// Списки
+function insertBulletList() { exec('insertUnorderedList'); }
+function insertNumberedList() { exec('insertOrderedList'); }
+function insertTaskList() {
+  const html = '<ul class="task-list"><li><input type="checkbox"> </li></ul>';
+  document.execCommand('insertHTML', false, html);
+  editor.focus(); notifyChange();
+}
+
+// Выравнивание
+function alignLeft() { exec('justifyLeft'); }
+function alignCenter() { exec('justifyCenter'); }
+function alignRight() { exec('justifyRight'); }
+function alignJustify() { exec('justifyFull'); }
+function indent() { exec('indent'); }
+function outdent() { exec('outdent'); }
+
+// Вставка
+function insertLink(url, text) {
+  if (!url) url = prompt('URL:', 'https://');
+  if (!url) return;
+  if (!text) text = url;
+  document.execCommand('createLink', false, url);
+  editor.focus(); notifyChange();
+}
+function insertImage(url, alt) {
+  if (!url) url = prompt('URL изображения:', 'https://');
+  if (!url) return;
+  if (!alt) alt = '';
+  const html = '<img src="' + url + '" alt="' + alt + '" style="max-width:100%">';
+  document.execCommand('insertHTML', false, html);
+  editor.focus(); notifyChange();
+}
+function insertTable(rows, cols) {
+  if (!rows) rows = parseInt(prompt('Строк:', '3')) || 3;
+  if (!cols) cols = parseInt(prompt('Столбцов:', '3')) || 3;
+  let html = '<table>';
+  for (let r = 0; r < rows; r++) {
+    html += '<tr>';
+    for (let c = 0; c < cols; c++) html += '<td>&nbsp;</td>';
+    html += '</tr>';
+  }
+  html += '</table>';
+  document.execCommand('insertHTML', false, html);
+  editor.focus(); notifyChange();
+}
+function insertHr() {
+  document.execCommand('insertHorizontalRule');
+  editor.focus(); notifyChange();
+}
+function insertEmbed(url) {
+  if (!url) url = prompt('URL для вставки (iframe/video):', 'https://');
+  if (!url) return;
+  const html = '<iframe src="' + url + '" width="100%" height="315" frameborder="0" allowfullscreen></iframe>';
+  document.execCommand('insertHTML', false, html);
+  editor.focus(); notifyChange();
+}
+
+// Цвет
+function setForeColor(color) {
+  if (!color) color = prompt('Цвет текста (название или #hex):', 'red');
+  if (!color) return;
+  exec('foreColor', color);
+}
+function setBackColor(color) {
+  if (!color) color = prompt('Цвет фона (название или #hex):', 'yellow');
+  if (!color) return;
+  exec('hiliteColor', color);
+}
+
+// Код
+function inlineCode() {
+  const sel = window.getSelection();
+  if (sel.rangeCount && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const fragment = range.extractContents();
+    const code = document.createElement('code');
+    code.appendChild(fragment);
+    range.insertNode(code);
+    editor.focus(); notifyChange();
+  }
+}
+
+// View Source
+function toggleSource() {
+  isSourceMode = !isSourceMode;
+  if (isSourceMode) {
+    sourceView.value = editor.innerHTML.trim();
+    editor.style.display = 'none';
+    sourceView.style.display = 'block';
+    sourceView.focus();
+  } else {
+    editor.innerHTML = sourceView.value;
+    editor.style.display = 'block';
+    sourceView.style.display = 'none';
     editor.focus();
-    updateToolbar();
+    notifyChange();
   }
+}
 
-  function updateToolbar() {
-    const btns = document.querySelectorAll('#toolbar button');
-    btns.forEach(b => b.classList.remove('active'));
-    if (document.queryCommandState('bold')) {
-      document.querySelector('[onclick*="bold"]')?.classList.add('active');
-    }
-    if (document.queryCommandState('italic')) {
-      document.querySelector('[onclick*="italic"]')?.classList.add('active');
-    }
+// Связь с нативным кодом
+function notifyChange() {
+  if (!isSourceMode) {
+    window.webkit.messageHandlers.contentChanged.postMessage(editor.innerHTML.trim());
   }
+}
 
-  editor.addEventListener('keydown', (e) => {
-    if (e.metaKey && e.key === 'b') { e.preventDefault(); exec('bold'); }
-    if (e.metaKey && e.key === 'i') { e.preventDefault(); exec('italic'); }
-    if (e.metaKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); exec('undo'); }
-    if (e.metaKey && e.key === 'z' && e.shiftKey) { e.preventDefault(); exec('redo'); }
-  });
+editor.addEventListener('input', notifyChange);
+editor.addEventListener('click', notifyChange);
+editor.addEventListener('keyup', notifyChange);
 
-  editor.addEventListener('input', () => {
-    const html = editor.innerHTML.trim();
-    window.webkit.messageHandlers.contentChanged.postMessage(html);
-  });
+// Установка/получение содержимого
+function setContent(html) {
+  editor.innerHTML = html;
+  editor.focus();
+}
+function getContent() {
+  return isSourceMode ? sourceView.value.trim() : editor.innerHTML.trim();
+}
 
-  editor.addEventListener('click', updateToolbar);
-  editor.addEventListener('keyup', updateToolbar);
-
-  // Swift -> JS: установить содержимое
-  function setContent(html) {
-    editor.innerHTML = html;
-    editor.focus();
-  }
-  // Swift -> JS: получить содержимое
-  function getContent() {
-    return editor.innerHTML.trim();
-  }
+// Отключаем встроенные стили при вставке
+editor.addEventListener('paste', function(e) {
+  e.preventDefault();
+  const text = e.clipboardData.getData('text/plain');
+  document.execCommand('insertText', false, text);
+});
 </script>
 </body>
 </html>

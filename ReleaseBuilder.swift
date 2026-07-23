@@ -733,184 +733,199 @@ func htmlToText(_ html: String) -> String {
 
 // MARK: - HTML Editor
 
+private let editorToolbarDef: [(String, String, String)] = [
+    ("bold", "B", "bold()"),
+    ("italic", "I", "italic()"),
+    ("underline", "U", "underline()"),
+    ("strikethrough", "S", "strikethrough()"),
+    ("", "", ""),
+    ("h1", "H1", "setHeading(1)"),
+    ("h2", "H2", "setHeading(2)"),
+    ("h3", "H3", "setHeading(3)"),
+    ("para", "¶", "setParagraph()"),
+    ("", "", ""),
+    ("bullet", "•", "insertBulletList()"),
+    ("numbered", "1.", "insertNumberedList()"),
+    ("task", "☑", "insertTaskList()"),
+    ("", "", ""),
+    ("link", "🔗", "insertLink()"),
+    ("image", "🖼", "insertImage()"),
+    ("table", "⊞", "insertTable()"),
+    ("hr", "—", "insertHr()"),
+    ("", "", ""),
+    ("quote", "❝", "setBlockquote()"),
+    ("code", "<>", "inlineCode()"),
+    ("pre", "{}", "setPre()"),
+    ("", "", ""),
+    ("left", "⇤", "alignLeft()"),
+    ("center", "⇔", "alignCenter()"),
+    ("right", "⇥", "alignRight()"),
+    ("", "", ""),
+    ("color", "🎨", "setForeColor()"),
+    ("bg", "◧", "setBackColor()"),
+    ("clear", "✕", "clearFormatting()"),
+    ("", "", ""),
+    ("source", "⟨⟩", "toggleSource()"),
+]
+
 private func loadHTMLEditorTemplate() -> String {
-    // Ищем html_editor.html рядом со скриптом или в проекте
     let candidates = [
         "\(projectDir)/SSHManager/Resources/html_editor.html",
         "\(projectDir)/html_editor.html",
     ]
-    for path in candidates {
-        if FileManager.default.fileExists(atPath: path),
-           let content = try? String(contentsOfFile: path, encoding: .utf8) {
-            return content
-        }
+    for p in candidates {
+        if FileManager.default.fileExists(atPath: p),
+           let c = try? String(contentsOfFile: p, encoding: .utf8) { return c }
     }
-    // Фолбэк — минимальный редактор
-    return "<html><body style='font-family:sans-serif;padding:20px'><div id='editor' contenteditable style='min-height:300px;outline:none;font-size:14px'></div><script>const e=document.getElementById('editor');function setContent(h){e.innerHTML=h;}function getContent(){return e.innerHTML.trim();}</script></body></html>"
+    return "<html><body><div id='editor' contenteditable></div><script>function setContent(h){document.getElementById('editor').innerHTML=h;}function getContent(){return document.getElementById('editor').innerHTML.trim();}</script></body></html>"
 }
 
 private func openHTMLEditor(initialHTML: String, completion: @escaping (String) -> Void) {
-    let template = loadHTMLEditorTemplate()
-    let tmpDir = FileManager.default.temporaryDirectory
-    let htmlFile = tmpDir.appendingPathComponent("sparkle_editor.html")
-    try? template.write(to: htmlFile, atomically: true, encoding: .utf8)
-
-    let editor = EditorWindowController(initialHTML: initialHTML, htmlFileURL: htmlFile, completion: completion)
-    editor.showWindow(nil)
+    let tpl = loadHTMLEditorTemplate()
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("editor.html")
+    try? tpl.write(to: tmp, atomically: true, encoding: .utf8)
+    EditorWindowController(initial: initialHTML, file: tmp, done: completion).show()
 }
 
-private class EditorWindowController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    private let initialHTML: String
-    private let htmlFileURL: URL
-    private let completion: (String) -> Void
-    private var window: NSWindow?
-    private var webView: WKWebView?
-    private var tabView: NSTabView?
+private class EditorWindowController: NSObject, NSToolbarDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSTabViewDelegate {
+    private var win: NSWindow!
+    private var wv: WKWebView!
+    private var tab: NSTabView!
+    private var pWV: WKWebView!
+    private var tV: NSTextView!
+    private let initial: String
+    private let file: URL
+    private let done: (String) -> Void
 
-    init(initialHTML: String, htmlFileURL: URL, completion: @escaping (String) -> Void) {
-        self.initialHTML = initialHTML
-        self.htmlFileURL = htmlFileURL
-        self.completion = completion
-        super.init()
+    init(initial: String, file: URL, done: @escaping (String) -> Void) {
+        self.initial = initial; self.file = file; self.done = done; super.init()
     }
 
-    func showWindow(_ sender: Any?) {
-        // Вкладки: Редактор | Предпросмотр (HTML) | Предпросмотр (Текст)
-        let tabView = NSTabView()
-        tabView.translatesAutoresizingMaskIntoConstraints = false
-        self.tabView = tabView
-
-        // Вкладка 1: Редактор
-        let config = WKWebViewConfiguration()
-        config.userContentController.add(self, name: "contentChanged")
-        let wv = WKWebView(frame: .zero, configuration: config)
+    func show() {
+        let cfg = WKWebViewConfiguration()
+        cfg.userContentController.add(self, name: "contentChanged")
+        wv = WKWebView(frame: .zero, configuration: cfg)
         wv.setValue(false, forKey: "drawsBackground")
         wv.navigationDelegate = self
-        wv.translatesAutoresizingMaskIntoConstraints = false
-        wv.loadFileURL(htmlFileURL, allowingReadAccessTo: htmlFileURL.deletingLastPathComponent())
-        self.webView = wv
+        wv.loadFileURL(file, allowingReadAccessTo: file.deletingLastPathComponent())
 
-        let editorTab = NSTabViewItem(identifier: "editor")
-        editorTab.label = "Редактор"
-        editorTab.view = wv
-        tabView.addTabViewItem(editorTab)
+        pWV = WKWebView(); pWV.setValue(false, forKey: "drawsBackground")
+        tV = NSTextView(); tV.isEditable = false; tV.font = .systemFont(ofSize: 13); tV.backgroundColor = .white
+        let tS = NSScrollView(); tS.documentView = tV; tS.hasVerticalScroller = true
 
-        // Вкладка 2: Предпросмотр HTML
-        let previewWV = WKWebView(frame: .zero)
-        previewWV.setValue(false, forKey: "drawsBackground")
-        previewWV.translatesAutoresizingMaskIntoConstraints = false
-        previewWV.isHidden = true
-        let previewTab = NSTabViewItem(identifier: "preview")
-        previewTab.label = "HTML"
-        previewTab.view = previewWV
-        tabView.addTabViewItem(previewTab)
+        tab = NSTabView()
+        tab.translatesAutoresizingMaskIntoConstraints = false
+        tab.addTabViewItem(NSTabViewItem(identifier: "edit")); tab.tabViewItem(at: 0).label = "Редактор"; tab.tabViewItem(at: 0).view = wv
+        tab.addTabViewItem(NSTabViewItem(identifier: "html")); tab.tabViewItem(at: 1).label = "HTML"; tab.tabViewItem(at: 1).view = pWV
+        tab.addTabViewItem(NSTabViewItem(identifier: "text")); tab.tabViewItem(at: 2).label = "Текст"; tab.tabViewItem(at: 2).view = tS
+        tab.delegate = self
 
-        // Вкладка 3: Предпросмотр текста
-        let textPreview = NSTextView(frame: .zero)
-        textPreview.isEditable = false
-        textPreview.font = NSFont.systemFont(ofSize: 13)
-        textPreview.translatesAutoresizingMaskIntoConstraints = false
-        textPreview.backgroundColor = NSColor.white
-        let textScroll = NSScrollView()
-        textScroll.documentView = textPreview
-        textScroll.hasVerticalScroller = true
-        textScroll.translatesAutoresizingMaskIntoConstraints = false
-        let textTab = NSTabViewItem(identifier: "text")
-        textTab.label = "Текст"
-        textTab.view = textScroll
-        tabView.addTabViewItem(textTab)
-
-        // Сохраняем ссылки для обновления предпросмотра
-        tabView.delegate = self
-
-        // Кнопки
         let btnCancel = NSButton(title: "Отмена", target: self, action: #selector(cancel))
         btnCancel.keyEquivalent = "\u{1b}"
-        let btnDone = NSButton(title: "Готово", target: self, action: #selector(done))
+        let btnDone = NSButton(title: "Готово", target: self, action: #selector(doneAction))
         btnDone.keyEquivalent = "\r"
         btnDone.keyEquivalentModifierMask = .command
         btnDone.bezelStyle = .rounded
 
-        let bottomBar = NSStackView(views: [btnCancel, NSView(), btnDone])
-        bottomBar.orientation = .horizontal
-        bottomBar.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        let bottom = NSStackView(views: [btnCancel, NSView(), btnDone])
+        bottom.orientation = .horizontal
+        bottom.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        bottom.translatesAutoresizingMaskIntoConstraints = false
 
-        let contentView = NSView()
-        contentView.addSubview(tabView)
-        contentView.addSubview(bottomBar)
-        NSLayoutConstraint.activate([
-            tabView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            tabView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            tabView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
-            bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 40)
-        ])
+        let cv = NSView()
+        cv.addSubview(tab); cv.addSubview(bottom)
+        tab.topAnchor.constraint(equalTo: cv.topAnchor).isActive = true
+        tab.leadingAnchor.constraint(equalTo: cv.leadingAnchor).isActive = true
+        tab.trailingAnchor.constraint(equalTo: cv.trailingAnchor).isActive = true
+        tab.bottomAnchor.constraint(equalTo: bottom.topAnchor).isActive = true
+        bottom.leadingAnchor.constraint(equalTo: cv.leadingAnchor).isActive = true
+        bottom.trailingAnchor.constraint(equalTo: cv.trailingAnchor).isActive = true
+        bottom.bottomAnchor.constraint(equalTo: cv.bottomAnchor).isActive = true
+        bottom.heightAnchor.constraint(equalToConstant: 44).isActive = true
 
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 520), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 750, height: 550),
+                       styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                       backing: .buffered, defer: false)
         win.title = "Редактор описания обновления"
-        win.contentView = contentView
+        win.contentView = cv
         win.center()
         win.isReleasedWhenClosed = false
+
+        let tb = NSToolbar(identifier: "HTMLEditor")
+        tb.delegate = self
+        tb.displayMode = .iconOnly
+        tb.allowsUserCustomization = false
+        win.toolbarStyle = .unified
+        win.toolbar = tb
+
         win.makeKeyAndOrderFront(nil)
-        self.window = win
     }
 
-    @objc private func cancel() { window?.close() }
-    @objc private func done() {
-        webView?.evaluateJavaScript("getContent()") { [weak self] result, _ in
-            if let html = result as? String {
-                self?.completion(html)
-            }
-            self?.window?.close()
+    @objc private func cancel() { win.close() }
+    @objc private func doneAction() {
+        wv.evaluateJavaScript("getContent()") { [weak self] r, _ in
+            if let h = r as? String { self?.done(h) }
+            self?.win.close()
         }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if webView == self.webView {
-            let escaped = initialHTML
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "`", with: "\\`")
-                .replacingOccurrences(of: "$", with: "\\$")
-            webView.evaluateJavaScript("setContent(`\(escaped)`)")
-        }
+        guard webView == wv else { return }
+        let esc = initial.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "`", with: "\\`").replacingOccurrences(of: "$", with: "\\$")
+        wv.evaluateJavaScript("setContent(`\(esc)`)")
     }
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        // Обновляем предпросмотр при изменении контента
-        if let html = message.body as? String {
-            updatePreviews(html: html)
-        }
+    func userContentController(_ ucc: WKUserContentController, didReceive msg: WKScriptMessage) {
+        guard let h = msg.body as? String else { return }
+        updatePreviews(html: h)
     }
 
     private func updatePreviews(html: String) {
-        guard let tabView = tabView else { return }
-        // HTML preview
-        let previewItem = tabView.tabViewItem(at: 1)
-        if let previewWV = previewItem.view as? WKWebView {
-            let styled = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px;color:#1d1d1d;}h3{font-size:15px;margin:0 0 4px;}ul{padding-left:24px;}li{margin:2px 0;}</style></head><body>\(html)</body></html>"
-            previewWV.loadHTMLString(styled, baseURL: URL(string: "about:blank"))
-        }
-        // Text preview
-        let textItem = tabView.tabViewItem(at: 2)
-        if let textScroll = textItem.view as? NSScrollView,
-           let textView = textScroll.documentView as? NSTextView {
-            textView.string = htmlToText(html)
+        let s = "<html><head><meta charset='utf-8'><style>body{font-family:-apple-system;font-size:14px;line-height:1.6;padding:16px 24px;color:#1d1d1d;}h1,h2,h3,h4{margin:0 0 6px;}ul,ol{padding-left:24px;}li{margin:2px 0;}blockquote{border-left:3px solid #ccc;padding-left:12px;color:#555;margin:8px 0;}pre{background:#f0f0f0;padding:10px;border-radius:4px;font-family:monospace;}code{background:#f0f0f0;padding:1px 4px;border-radius:3px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:4px 8px;}th{background:#f5f5f5;}.task-list{list-style:none;padding-left:4px;}.task-list li{display:flex;align-items:center;gap:4px;}</style></head><body>\(h)</body></html>"
+        pWV.loadHTMLString(s, baseURL: URL(string: "about:blank"))
+        tV.string = htmlToText(h)
+    }
+
+    func tabView(_ tabView: NSTabView, didSelect item: NSTabViewItem?) {
+        wv.evaluateJavaScript("getContent()") { [weak self] r, _ in
+            if let h = r as? String { self?.updatePreviews(html: h) }
         }
     }
-}
 
-extension EditorWindowController: NSTabViewDelegate {
-    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
-        if let id = tabViewItem?.identifier as? String, id == "preview" || id == "text" {
-            webView?.evaluateJavaScript("getContent()") { [weak self] result, _ in
-                if let html = result as? String {
-                    self?.updatePreviews(html: html)
-                }
-            }
+    // NSToolbarDelegate
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard let idx = Int(itemIdentifier.rawValue), idx >= 0, idx < editorToolbarDef.count else { return nil }
+        let info = editorToolbarDef[idx]
+        if info.1.isEmpty {
+            let sep = NSTrackingSeparatorToolbarItem(identifier: itemIdentifier, splitView: nil, dividerIndex: 0)
+            return sep
         }
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = info.0
+        item.toolTip = info.0
+        let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 32, height: 24))
+        btn.title = info.1
+        btn.bezelStyle = .toolbar
+        btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        btn.target = self
+        btn.action = #selector(tbAction(_:))
+        btn.tag = idx
+        item.view = btn
+        return item
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        editorToolbarDef.indices.map { NSToolbarItem.Identifier("\($0)") }
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        editorToolbarDef.indices.map { NSToolbarItem.Identifier("\($0)") }
+    }
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
+
+    @objc private func tbAction(_ sender: NSButton) {
+        let idx = sender.tag
+        guard idx >= 0, idx < editorToolbarDef.count else { return }
+        let js = editorToolbarDef[idx].2
+        if !js.isEmpty { wv.evaluateJavaScript(js) }
     }
 }
