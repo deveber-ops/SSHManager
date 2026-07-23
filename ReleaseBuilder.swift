@@ -850,7 +850,8 @@ private class NativeEditorWindow: NSObject, NSToolbarDelegate, NSTabViewDelegate
         return item
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ids(["bold","italic","underline",.space,"h1","h2","h3","para",.space,"bull","num","task",.space,"link","img","table","hr",.space,"quote","code","preBlock",.space,"left","center","right",.space,"color","bg","clear"])
+        let s = NSToolbarItem.Identifier.space
+        return idsArr("bold","italic","underline",s,"h1","h2","h3","para",s,"bull","num","task",s,"link","img","table","hr",s,"quote","code","preBlock",s,"left","center","right",s,"color","bg","clear")
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
@@ -861,7 +862,10 @@ private class NativeEditorWindow: NSObject, NSToolbarDelegate, NSTabViewDelegate
         switch sender.title {
         case "B": toggleTrait(.boldFontMask, in: sel)
         case "I": toggleTrait(.italicFontMask, in: sel)
-        case "U": ts.toggleUnderline(nil)
+        case "U":
+            ts.enumerateAttribute(.underlineStyle, in: sel, options: []) { v, r, _ in
+                ts.addAttribute(.underlineStyle, value: (v as? Int) == 1 ? 0 : 1, range: r)
+            }
         case "H1": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 22), range: sel)
         case "H2": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: sel)
         case "H3": ts.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 15), range: sel)
@@ -904,10 +908,10 @@ private class NativeEditorWindow: NSObject, NSToolbarDelegate, NSTabViewDelegate
     }
 }
 
-private func ids(_ arr: [Any]) -> [NSToolbarItem.Identifier] {
-    arr.map {
+private func idsArr(_ items: Any...) -> [NSToolbarItem.Identifier] {
+    items.map {
         if let s = $0 as? String { return NSToolbarItem.Identifier(s) }
-        return NSToolbarItem.Identifier.space
+        return $0 as! NSToolbarItem.Identifier
     }
 }
 
